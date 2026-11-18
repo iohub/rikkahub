@@ -52,7 +52,44 @@ data class Assistant(
     val enableTimeReminder: Boolean = false, // 时间间隔提醒注入
     val timeReminderIntervalMinutes: Int = 60, // 时间提醒间隔（分钟，至少 1 分钟）
     val allowConversationSystemPrompt: Boolean = false, // 允许对话单独重写 system prompt
+    val promptInjectionOverride: PromptInjectionOverride = PromptInjectionOverride(), // 额外提示词注入的关闭开关
 )
+
+/**
+ * 额外提示词注入的关闭开关。
+ * 总开关 [disableAll] 为 true 时，所有子项一律视为关闭，各 is*Disabled 计算属性返回 true。
+ * 注意：部分项（OCR、文档转提示）关闭后会改变模型可见内容，属预期行为。
+ */
+@Serializable
+data class PromptInjectionOverride(
+    /** 总开关：关闭所有额外注入的提示词 */
+    val disableAll: Boolean = false,
+    /** 记忆系统提示词（<memory_system>/<memory_format>） */
+    val disableMemory: Boolean = false,
+    /** 工具自带的 system 提示词（技能清单、TTS 语气指导） */
+    val disableToolPrompts: Boolean = false,
+    /** 模式注入 / 世界书 */
+    val disableModeInjections: Boolean = false,
+    /** 工作区环境说明与 AGENTS.md */
+    val disableWorkspace: Boolean = false,
+    /** 时间提醒 <time_reminder> */
+    val disableTimeReminder: Boolean = false,
+    /** 上传文档正文转提示词 */
+    val disableDocumentAsPrompt: Boolean = false,
+    /** 图片 OCR 文本 */
+    val disableOcr: Boolean = false,
+    /** 占位符替换（{{char}}/{{user}}/{{cur_date}} 等） */
+    val disablePlaceholders: Boolean = false,
+) {
+    val isMemoryDisabled: Boolean get() = disableAll || disableMemory
+    val isToolPromptsDisabled: Boolean get() = disableAll || disableToolPrompts
+    val isModeInjectionsDisabled: Boolean get() = disableAll || disableModeInjections
+    val isWorkspaceDisabled: Boolean get() = disableAll || disableWorkspace
+    val isTimeReminderDisabled: Boolean get() = disableAll || disableTimeReminder
+    val isDocumentAsPromptDisabled: Boolean get() = disableAll || disableDocumentAsPrompt
+    val isOcrDisabled: Boolean get() = disableAll || disableOcr
+    val isPlaceholdersDisabled: Boolean get() = disableAll || disablePlaceholders
+}
 
 @Serializable
 data class QuickMessage(

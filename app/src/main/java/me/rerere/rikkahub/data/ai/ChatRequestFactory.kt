@@ -115,7 +115,11 @@ class ChatRequestFactory(
             conversationId = conversation.id,
             conversationSystemPrompt = conversation.customSystemPrompt,
             workspaceCwd = conversation.workspaceCwd,
-            memories = if (assistant.enableMemory) memoryRepository.getFiles(assistant.memoryId) else emptyList(),
+            memories = if (assistant.enableMemory && !assistant.promptInjectionOverride.isMemoryDisabled) {
+                memoryRepository.getFiles(assistant.memoryId)
+            } else {
+                emptyList()
+            },
             tools = chatToolFactory.createTools(
                 settings = settings,
                 assistant = assistant,
@@ -243,14 +247,16 @@ class ChatRequestFactory(
                 }
 
                 // 记忆
-                if (assistant.enableMemory) {
+                if (assistant.enableMemory && !assistant.promptInjectionOverride.isMemoryDisabled) {
                     appendLine()
                     append(buildMemoryPrompt(turn.memories))
                 }
                 // 工具prompt
-                turn.tools.forEach { tool ->
-                    appendLine()
-                    append(tool.systemPrompt(turn.model, messages))
+                if (!assistant.promptInjectionOverride.isToolPromptsDisabled) {
+                    turn.tools.forEach { tool ->
+                        appendLine()
+                        append(tool.systemPrompt(turn.model, messages))
+                    }
                 }
             }
             if (system.isNotBlank()) {

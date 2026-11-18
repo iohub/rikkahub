@@ -21,7 +21,7 @@ object TimeReminderTransformer : InputMessageTransformer {
         ctx: TransformerContext,
         messages: List<UIMessage>,
     ): List<UIMessage> {
-        if (!ctx.assistant.enableTimeReminder) return messages
+        if (!ctx.assistant.enableTimeReminder || ctx.assistant.promptInjectionOverride.isTimeReminderDisabled) return messages
         return applyTimeReminder(messages, ctx.assistant.timeReminderIntervalMinutes)
     }
 }

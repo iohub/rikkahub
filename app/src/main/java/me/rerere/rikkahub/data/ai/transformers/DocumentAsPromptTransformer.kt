@@ -17,6 +17,7 @@ object DocumentAsPromptTransformer : InputMessageTransformer {
         ctx: TransformerContext,
         messages: List<UIMessage>,
     ): List<UIMessage> {
+        if (ctx.assistant.promptInjectionOverride.isDocumentAsPromptDisabled) return messages
         return withContext(Dispatchers.IO) {
             messages.map { message ->
                 message.copy(

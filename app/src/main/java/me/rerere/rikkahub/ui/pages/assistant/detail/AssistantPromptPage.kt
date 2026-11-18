@@ -223,6 +223,161 @@ private fun AssistantPromptContent(
                     Text(stringResource(R.string.assistant_page_allow_conversation_system_prompt))
                 },
             )
+
+            // 额外提示词注入的关闭开关：总开关优先，打开后所有子项一律视为关闭
+            val injectionOverride = assistant.promptInjectionOverride
+            switchItem(
+                checked = injectionOverride.disableAll,
+                onCheckedChange = {
+                    onUpdate(
+                        assistant.copy(
+                            promptInjectionOverride = injectionOverride.copy(disableAll = it)
+                        )
+                    )
+                },
+                supportingContent = {
+                    Text(stringResource(R.string.assistant_page_disable_all_prompt_injections_desc))
+                },
+                headlineContent = {
+                    Text(stringResource(R.string.assistant_page_disable_all_prompt_injections))
+                },
+            )
+            switchItem(
+                checked = injectionOverride.disableMemory,
+                onCheckedChange = {
+                    onUpdate(
+                        assistant.copy(
+                            promptInjectionOverride = injectionOverride.copy(disableMemory = it)
+                        )
+                    )
+                },
+                enabled = !injectionOverride.disableAll,
+                supportingContent = {
+                    Text(stringResource(R.string.assistant_page_disable_memory_prompt_desc))
+                },
+                headlineContent = {
+                    Text(stringResource(R.string.assistant_page_disable_memory_prompt))
+                },
+            )
+            switchItem(
+                checked = injectionOverride.disableToolPrompts,
+                onCheckedChange = {
+                    onUpdate(
+                        assistant.copy(
+                            promptInjectionOverride = injectionOverride.copy(disableToolPrompts = it)
+                        )
+                    )
+                },
+                enabled = !injectionOverride.disableAll,
+                supportingContent = {
+                    Text(stringResource(R.string.assistant_page_disable_tool_prompts_desc))
+                },
+                headlineContent = {
+                    Text(stringResource(R.string.assistant_page_disable_tool_prompts))
+                },
+            )
+            switchItem(
+                checked = injectionOverride.disableModeInjections,
+                onCheckedChange = {
+                    onUpdate(
+                        assistant.copy(
+                            promptInjectionOverride = injectionOverride.copy(disableModeInjections = it)
+                        )
+                    )
+                },
+                enabled = !injectionOverride.disableAll,
+                supportingContent = {
+                    Text(stringResource(R.string.assistant_page_disable_mode_injections_desc))
+                },
+                headlineContent = {
+                    Text(stringResource(R.string.assistant_page_disable_mode_injections))
+                },
+            )
+            switchItem(
+                checked = injectionOverride.disableWorkspace,
+                onCheckedChange = {
+                    onUpdate(
+                        assistant.copy(
+                            promptInjectionOverride = injectionOverride.copy(disableWorkspace = it)
+                        )
+                    )
+                },
+                enabled = !injectionOverride.disableAll,
+                supportingContent = {
+                    Text(stringResource(R.string.assistant_page_disable_workspace_prompt_desc))
+                },
+                headlineContent = {
+                    Text(stringResource(R.string.assistant_page_disable_workspace_prompt))
+                },
+            )
+            switchItem(
+                checked = injectionOverride.disableTimeReminder,
+                onCheckedChange = {
+                    onUpdate(
+                        assistant.copy(
+                            promptInjectionOverride = injectionOverride.copy(disableTimeReminder = it)
+                        )
+                    )
+                },
+                enabled = !injectionOverride.disableAll,
+                supportingContent = {
+                    Text(stringResource(R.string.assistant_page_disable_time_reminder_desc))
+                },
+                headlineContent = {
+                    Text(stringResource(R.string.assistant_page_disable_time_reminder))
+                },
+            )
+            switchItem(
+                checked = injectionOverride.disableDocumentAsPrompt,
+                onCheckedChange = {
+                    onUpdate(
+                        assistant.copy(
+                            promptInjectionOverride = injectionOverride.copy(disableDocumentAsPrompt = it)
+                        )
+                    )
+                },
+                enabled = !injectionOverride.disableAll,
+                supportingContent = {
+                    Text(stringResource(R.string.assistant_page_disable_document_as_prompt_desc))
+                },
+                headlineContent = {
+                    Text(stringResource(R.string.assistant_page_disable_document_as_prompt))
+                },
+            )
+            switchItem(
+                checked = injectionOverride.disableOcr,
+                onCheckedChange = {
+                    onUpdate(
+                        assistant.copy(
+                            promptInjectionOverride = injectionOverride.copy(disableOcr = it)
+                        )
+                    )
+                },
+                enabled = !injectionOverride.disableAll,
+                supportingContent = {
+                    Text(stringResource(R.string.assistant_page_disable_ocr_desc))
+                },
+                headlineContent = {
+                    Text(stringResource(R.string.assistant_page_disable_ocr))
+                },
+            )
+            switchItem(
+                checked = injectionOverride.disablePlaceholders,
+                onCheckedChange = {
+                    onUpdate(
+                        assistant.copy(
+                            promptInjectionOverride = injectionOverride.copy(disablePlaceholders = it)
+                        )
+                    )
+                },
+                enabled = !injectionOverride.disableAll,
+                supportingContent = {
+                    Text(stringResource(R.string.assistant_page_disable_placeholders_desc))
+                },
+                headlineContent = {
+                    Text(stringResource(R.string.assistant_page_disable_placeholders))
+                },
+            )
         }
 
         CardGroup {
