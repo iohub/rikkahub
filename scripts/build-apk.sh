@@ -224,6 +224,9 @@ RikkaHub 自动化 APK 构建脚本
 
 诊断:
   --dry-run               只打印将要执行的步骤和命令，不实际执行任何构建
+  --self-test-exit <code> 内部自检：不执行真实 Gradle，改用退出码 <code> 的假命令走
+                          完全相同的 tee + pipefail 管道，用来验证「构建失败 → 脚本非零
+                          退出」这条链路（同时自动跳过 SDK / 前端 / adb 安装）
   -h, --help              显示本帮助并退出
 
 环境变量覆盖（优先级从高到低）:
@@ -270,6 +273,9 @@ SKIP_SDK=0
 SKIP_WEB=0
 NO_DAEMON=0
 DRY_RUN=0
+# 内部自检：>0 时 run_build 不调用真实 gradle，改用该退出码的假命令，
+# 用于验证「构建失败 → 脚本非零退出」的传播链路（CI 冒烟）
+SELF_TEST_EXIT=0
 USE_PROXY=1
 JVM_PROXY=0
 PROXY_URL="http://127.0.0.1:7897"
@@ -341,6 +347,24 @@ parse_args() {
         ;;
       --dry-run)
         DRY_RUN=1
+        ;;
+      --self-test-exit)
+        [[ $# -ge 2 && -n "${2:-}" ]] || die "--self-test-exit 需要一个退出码，例如 --self-test-exit 7"
+        case "$2" in
+          *[!0-9]*) die "--self-test-exit 只接受 0-255 的整数（收到: $2）" ;;
+        esac
+        [[ "$2" -le 255 ]] || die "--self-test-exit 的退出码必须在 1-255 之间（收到: $2）"
+        [[ "$2" -ge 1 ]] || die "--self-test-exit 的退出码必须 >= 1（收到: $2）"
+        SELF_TEST_EXIT="$2"
+        shift
+        ;;
+      --self-test-exit=*)
+        case "${1#*=}" in
+          ''|*[!0-9]*) die "--self-test-exit 只接受 1-255 的整数（收到: ${1#*=}）" ;;
+        esac
+        [[ "${1#*=}" -ge 1 && "${1#*=}" -le 255 ]] \
+          || die "--self-test-exit 的退出码必须在 1-255 之间（收到: ${1#*=}）"
+        SELF_TEST_EXIT="${1#*=}"
         ;;
       -h|--help|help)
         usage
@@ -757,10 +781,12 @@ ensure_sdk_components() {
     log_warn "找不到 sdkmanager：仅在组件缺失时才会报错并给出手动安装指令"
   fi
 
-  ensure_sdk_component "$SDK_PACKAGE_PLATFORM"    "$SDK_PROBE_PLATFORM"
-  ensure_sdk_component "$SDK_PACKAGE_BUILD_TOOLS" "$SDK_PROBE_BUILD_TOOLS"
-  ensure_sdk_component "$SDK_PACKAGE_CMAKE"       "$SDK_PROBE_CMAKE"
-  ensure_sdk_component "$SDK_PACKAGE_NDK"         "$SDK_PROBE_NDK" "$SDK_PROBE_NDK_EXTRA"
+  # 任一组件安装失败必须立刻向上传播：调用处（main）用 `|| exit $?` 接收，
+  # 因此这里不能吞掉子函数的 return 1（否则会在"组件缺失"时仍打印"齐备"并继续构建）
+  ensure_sdk_component "$SDK_PACKAGE_PLATFORM"    "$SDK_PROBE_PLATFORM"    || return $?
+  ensure_sdk_component "$SDK_PACKAGE_BUILD_TOOLS" "$SDK_PROBE_BUILD_TOOLS" || return $?
+  ensure_sdk_component "$SDK_PACKAGE_CMAKE"       "$SDK_PROBE_CMAKE"       || return $?
+  ensure_sdk_component "$SDK_PACKAGE_NDK"         "$SDK_PROBE_NDK" "$SDK_PROBE_NDK_EXTRA" || return $?
 
   log_ok "SDK 组件齐备"
 }
@@ -1046,6 +1072,9 @@ run_build() {
 
   if [[ "$DRY_RUN" -eq 1 ]]; then
     log_info "[dry-run] 不执行 Gradle（真实构建实测约 12 分钟）"
+    if [[ "$SELF_TEST_EXIT" -gt 0 ]]; then
+      log_dim "[dry-run] --self-test-exit ${SELF_TEST_EXIT}：自检模式，将用退出码 ${SELF_TEST_EXIT} 的假命令代替 gradle"
+    fi
     return 0
   fi
 
@@ -1054,7 +1083,29 @@ run_build() {
 
   local start rc=0 elapsed
   start=$(date +%s)
-  ( cd "$REPO_ROOT" && "${GRADLE_EXEC[@]}" "${gradle_args[@]}" ) 2>&1 | tee "$BUILD_LOG" || rc=$?
+
+  # ★ 退出码传播（关键，勿改）：
+  #   本机 bash 3.2.57 实测 `(exit 42) 2>&1 | tee log` 在未开 pipefail 时返回 0，
+  #   即 gradle 的失败会被 tee 完全吞掉。因此这里：
+  #     1) 显式再确认 set -o pipefail（全局已开，防止将来被误关），并做运行期断言；
+  #     2) 用 `|| rc=$?` 捕获整个管道的状态 —— pipefail 下它等于 gradle 的非零退出码
+  #        （实测：gradle 退出 42 → rc=42）；
+  #     3) 不能写成 `cmd | tee log` 后再 `rc=$?`：那样非零状态会先被 ERR trap /
+  #        errexit 截走（实测 set +e 也拦不住 ERR trap）。
+  #   兜底口径：如需绕开 pipefail，可在管道后立刻取 ${PIPESTATUS[0]}（bash 3.2 可用，
+  #   且紧跟的 `||` 分支内仍有效），但必须在任何其它命令之前读取。
+  set -o pipefail
+  shopt -q -o pipefail \
+    || die "内部错误：pipefail 未生效，gradle 的非零退出码会被 tee 吞掉"
+
+  if [[ "$SELF_TEST_EXIT" -gt 0 ]]; then
+    # 内部自检：结构与真实构建完全一致（子 shell + 2>&1 + tee），只是命令必定失败，
+    # 用于在几秒内验证「构建失败 → 脚本非零退出」这条链路
+    log_warn "[self-test] 跳过真实 Gradle，用退出码 ${SELF_TEST_EXIT} 的假命令走同一条 tee 管道"
+    ( printf '[self-test] 模拟 gradle 失败，真实退出码 %s\n' "$SELF_TEST_EXIT" >&2; exit "$SELF_TEST_EXIT" ) 2>&1 | tee "$BUILD_LOG" || rc=$?
+  else
+    ( cd "$REPO_ROOT" && "${GRADLE_EXEC[@]}" "${gradle_args[@]}" ) 2>&1 | tee "$BUILD_LOG" || rc=$?
+  fi
   elapsed=$(( $(date +%s) - start ))
 
   if [[ "$rc" -ne 0 ]]; then
@@ -1262,6 +1313,14 @@ main() {
   parse_args "$@"
   resolve_variant
 
+  # 自检模式：只验证「gradle 失败 → 脚本非零退出」，不需要 SDK / 前端 / adb，
+  # 全部跳过以保证几秒内跑完且不产生任何副作用
+  if [[ "$SELF_TEST_EXIT" -gt 0 ]]; then
+    SKIP_SDK=1
+    SKIP_WEB=1
+    DO_INSTALL=0
+  fi
+
   log_section "RikkaHub APK 构建"
   log_info "仓库     : ${REPO_ROOT}"
   log_info "Gradle   : ${GRADLE_TASK}"
@@ -1275,32 +1334,45 @@ main() {
   if [[ "$DRY_RUN" -eq 1 ]]; then
     log_warn "--dry-run：只打印步骤与命令，不执行任何构建 / 安装"
   fi
+  if [[ "$SELF_TEST_EXIT" -gt 0 ]]; then
+    log_warn "--self-test-exit ${SELF_TEST_EXIT}：内部自检，用假 gradle 验证「构建失败 → 脚本非零退出」"
+  fi
 
-  preflight_checks
+  preflight_checks      || exit $?
   timer_mark "预检"
-  setup_proxy
+  setup_proxy           || exit $?
   timer_mark "代理"
-  detect_java_home
+  detect_java_home      || exit $?
   timer_mark "JDK"
-  detect_android_home
-  ensure_sdk_components
+  detect_android_home   || exit $?
+  ensure_sdk_components || exit $?
   timer_mark "Android SDK"
-  ensure_google_services
+  ensure_google_services || exit $?
   timer_mark "Firebase 配置"
-  ensure_web_ui
+  ensure_web_ui         || exit $?
   timer_mark "前端依赖"
-  check_release_keystore
+  check_release_keystore || exit $?
 
   if [[ "$DO_CLEAN" -eq 1 ]]; then
-    run_clean
+    run_clean || exit $?
     timer_mark "clean"
   fi
 
-  run_build
-  report_artifacts
-  install_apk
+  run_build        || exit $?
+  report_artifacts || exit $?
+  install_apk      || exit $?
   print_summary
 }
 
 main "$@"
-exit 0
+main_rc=$?
+
+# ★ 退出码传播（关键，勿改）：
+#   这里绝不能写 `exit 0` —— 那会把主流程里任何非致命的非零返回码吞掉，
+#   导致「构建失败但脚本退出 0」，CI / 上层脚本会把失败误判为成功。
+#   set -e + ERR trap 已能把大多数失败直接 exit，但被 `if` / `||` / `&&` 语境
+#   吞掉的非零返回仍会走到这里，所以必须把 main 的真实退出码原样传出。
+if [[ "$main_rc" -ne 0 ]]; then
+  log_error "主流程未成功完成，脚本以退出码 ${main_rc} 退出"
+fi
+exit "$main_rc"
