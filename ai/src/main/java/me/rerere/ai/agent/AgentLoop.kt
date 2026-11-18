@@ -1,7 +1,9 @@
 package me.rerere.ai.agent
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.FlowCollector
+import kotlinx.coroutines.withTimeout
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import kotlinx.serialization.json.buildJsonObject
@@ -15,6 +17,7 @@ import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.ai.ui.finishReasoning
 import me.rerere.ai.util.json
+import java.net.SocketTimeoutException
 import kotlin.time.Clock
 import kotlin.time.Duration
 import kotlin.time.TimeMark
@@ -129,16 +132,19 @@ internal class AgentLoop(
                 val handler = StreamChunkHandler(params.model)
                 var attempt = stepStart
                 var firstChunk: TimeMark? = null
-                request.provider.streamText(request.providerSetting, messages, params).collect { chunk ->
-                    try {
-                        val mark = firstChunk ?: TimeSource.Monotonic.markNow().also { firstChunk = it }
-                        attempt = handler.handle(listOf(attempt), chunk).single()
-                        preview(attempt.withStepStats(base, mark.elapsedNow()), newPartsFrom = base.parts.size)
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Throwable) {
-                        // 合并失败或下游处理失败都不是网络故障，不能重放模型请求
-                        throw StreamChunkHandlingException(e)
+                // 超时只包住真正发请求这一段，且每次重试尝试各自重新计时
+                withRequestTimeout {
+                    request.provider.streamText(request.providerSetting, messages, params).collect { chunk ->
+                        try {
+                            val mark = firstChunk ?: TimeSource.Monotonic.markNow().also { firstChunk = it }
+                            attempt = handler.handle(listOf(attempt), chunk).single()
+                            preview(attempt.withStepStats(base, mark.elapsedNow()), newPartsFrom = base.parts.size)
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Throwable) {
+                            // 合并失败或下游处理失败都不是网络故障，不能重放模型请求
+                            throw StreamChunkHandlingException(e)
+                        }
                     }
                 }
                 attempt.withStepStats(base, firstChunk?.elapsedNow() ?: Duration.ZERO)
@@ -157,7 +163,7 @@ internal class AgentLoop(
         var requestMark = TimeSource.Monotonic.markNow()
         val result = withRetry(request.retry, onRetry = { events.emit(AgentEvent.Retrying(it)) }) {
             requestMark = TimeSource.Monotonic.markNow()
-            request.provider.generateText(request.providerSetting, messages, params)
+            withRequestTimeout { request.provider.generateText(request.providerSetting, messages, params) }
         }
         val requestTime = requestMark.elapsedNow()
         // 和流式一样只追加 part，不并进之前步骤的文本或推理里，否则 newPartsFrom 之后就不全是这一步的内容了。
@@ -170,6 +176,24 @@ internal class AgentLoop(
         ).finishReasoning().withStepStats(base, requestTime)
         preview(generated, newPartsFrom = base.parts.size)
         return generated
+    }
+
+    /**
+     * 给单次模型请求套上硬超时，只在 [AgentRequest.requestTimeout] 配置了值时才生效。
+     *
+     * [withTimeout] 抛出的 [TimeoutCancellationException] 是 [CancellationException] 的子类，会被
+     * [withRetry] 当成用户点了「停止生成」直接抛出而不重试，所以这里把它转成 [SocketTimeoutException]
+     * （IOException 的子类），让重试策略把超时当成网络故障重新提交请求。
+     *
+     * 只捕获这一个类型：用户取消时外层抛的是 JobCancellationException，不会被这里吞掉。
+     */
+    private suspend fun <T> withRequestTimeout(block: suspend () -> T): T {
+        val timeout = request.requestTimeout ?: return block()
+        return try {
+            withTimeout(timeout) { block() }
+        } catch (e: TimeoutCancellationException) {
+            throw SocketTimeoutException("LLM request timed out after ${timeout.inWholeSeconds}s")
+        }
     }
 
     // 按调用顺序逐个执行，每执行完一个就更新一次，中途取消时已经执行的结果不会丢

@@ -919,6 +919,11 @@
   <string name="setting_page_preferences_network_proxy_invalid">Enter a valid proxy URL with a host and port.</string>
   <string name="setting_page_preferences_network_auto_retry">Automatic retry</string>
   <string name="setting_page_preferences_network_auto_retry_desc">Retry model requests up to 3 times when network errors occur.</string>
+  <string name="setting_page_preferences_network_request_timeout">Request timeout</string>
+  <string name="setting_page_preferences_network_request_timeout_desc">A model request that exceeds this duration is aborted and resubmitted automatically. 0 disables the timeout.</string>
+  <string name="setting_page_preferences_network_request_timeout_disabled">Disabled</string>
+  <string name="setting_page_preferences_network_request_timeout_seconds">%1$d s</string>
+  <string name="setting_page_preferences_network_request_timeout_input_hint">Seconds, 0 disables the timeout</string>
   <string name="setting_page_documentation">Documentation</string>
   <string name="setting_page_documentation_desc">View app usage instructions and help documentation</string>
   <string name="setting_page_donate">Donate</string>

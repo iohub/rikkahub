@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.jsonObject
@@ -31,6 +32,9 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.IOException
+import java.net.SocketTimeoutException
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 class AgentLoopTest {
     private val model = Model(modelId = "test-model")
@@ -43,6 +47,7 @@ class AgentLoopTest {
         stream: Boolean = true,
         maxSteps: Int = 256,
         retry: RetryPolicy = RetryPolicy.NONE,
+        requestTimeout: Duration? = null,
     ) = AgentRequest(
         provider = provider,
         providerSetting = ProviderSetting.OpenAI(),
@@ -51,6 +56,7 @@ class AgentLoopTest {
         stream = stream,
         maxSteps = maxSteps,
         retry = retry,
+        requestTimeout = requestTimeout,
     )
 
     private suspend fun runToEnd(
@@ -472,6 +478,59 @@ class AgentLoopTest {
     }
 
     @Test
+    fun `request timeout aborts the attempt and resubmits the request`() = runTest {
+        provider.stream {
+            text("half")
+            awaitCancellation()
+        }
+        provider.stream {
+            text("full")
+            finish()
+        }
+
+        val events = runToEnd(request(retry = RetryPolicy.NETWORK, requestTimeout = 5.seconds))
+
+        // 超时必须被转成 IOException：直接抛 TimeoutCancellationException 会被 withRetry 当成用户取消而放弃
+        val retrying = events.filterIsInstance<AgentEvent.Retrying>().single()
+        assertTrue(retrying.attempt.cause is SocketTimeoutException)
+        assertEquals(1, retrying.attempt.retry)
+        val finished = events.finished()
+        assertEquals(listOf("full"), finished.message.texts())
+        assertEquals(setOf(finished.message.id), events.messageIds())
+        assertEquals(2, provider.requests.size)
+    }
+
+    @Test
+    fun `non-streaming request timeout is resubmitted too`() = runTest {
+        provider.hangingResult()
+        provider.result(UIMessage.assistant("done"))
+
+        val events = runToEnd(
+            request(retry = RetryPolicy.NETWORK, stream = false, requestTimeout = 5.seconds)
+        )
+
+        val retrying = events.filterIsInstance<AgentEvent.Retrying>().single()
+        assertTrue(retrying.attempt.cause is SocketTimeoutException)
+        assertEquals(listOf("done"), events.finished().message.texts())
+        assertEquals(2, provider.requests.size)
+    }
+
+    @Test
+    fun `cancelling during a request is not treated as a timeout`() = runTest {
+        provider.stream { awaitCancellation() }
+
+        val job = launch {
+            runAgent(request(retry = RetryPolicy.NETWORK, requestTimeout = 30.seconds), hooks).toList()
+        }
+        runCurrent()
+        assertEquals(1, provider.requests.size)
+        job.cancelAndJoin()
+
+        // 用户点「停止生成」时不能重试
+        assertEquals(1, provider.requests.size)
+    }
+
+    @Test
     fun `failures in the collector are not retried as network errors`() = runTest {
         provider.stream {
             text("hello")
@@ -616,7 +675,7 @@ private class FakeProvider : Provider<ProviderSetting> {
 
     val requests = mutableListOf<Request>()
     private val streams = ArrayDeque<suspend FlowCollector<StreamChunk>.() -> Unit>()
-    private val results = ArrayDeque<TextGenerationResult>()
+    private val results = ArrayDeque<TextGenerationResult?>()
 
     fun stream(block: suspend FlowCollector<StreamChunk>.() -> Unit) {
         streams += block
@@ -624,6 +683,11 @@ private class FakeProvider : Provider<ProviderSetting> {
 
     fun result(message: UIMessage, usage: TokenUsage? = null) {
         results += TextGenerationResult(id = "result", model = "test-model", message = message, usage = usage)
+    }
+
+    /** 请求一直不返回，用来触发请求超时 */
+    fun hangingResult() {
+        results += null
     }
 
     override suspend fun listModels(providerSetting: ProviderSetting): List<Model> = emptyList()
@@ -634,7 +698,7 @@ private class FakeProvider : Provider<ProviderSetting> {
         params: TextGenerationParams,
     ): TextGenerationResult {
         requests += Request(messages, params)
-        return results.removeFirst()
+        return results.removeFirst() ?: awaitCancellation()
     }
 
     override suspend fun streamText(

@@ -51,7 +51,9 @@ import me.rerere.rikkahub.data.model.getChatModelOf
 import me.rerere.rikkahub.data.repository.MemoryRepository
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
 import me.rerere.rikkahub.data.repository.memoryId
+import java.net.SocketTimeoutException
 import kotlin.time.Clock
+import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.Uuid
 
 private const val TAG = "ChatRequestFactory"
@@ -171,6 +173,8 @@ class ChatRequestFactory(
             tools = turn.tools,
             stream = turn.assistant.streamOutput,
             retry = turn.settings.retryPolicy(),
+            requestTimeout = turn.settings.networkSetting.requestTimeoutSeconds
+                .takeIf { it > 0 }?.seconds,
         )
         val hooks = object : AgentHooks {
             override suspend fun prepareStep(messages: List<UIMessage>): StepRequest {
@@ -404,5 +408,20 @@ internal fun backgroundTextGenerationParams(
     sessionId = sessionId.toString(),
 )
 
-internal fun Settings.retryPolicy() =
-    if (networkSetting.enableAutoRetry) RetryPolicy.NETWORK else RetryPolicy.NONE
+/**
+ * 请求模型失败时的重试策略。
+ *
+ * 请求超时（networkSetting.requestTimeoutSeconds）会把被终止的请求转成 [SocketTimeoutException]
+ * 交给这里处理，所以关掉网络自动重试但启用了超时时，仍要保留「超时后自动重新提交」这一条。
+ */
+internal fun Settings.retryPolicy(): RetryPolicy {
+    val timeoutSeconds = networkSetting.requestTimeoutSeconds
+    return when {
+        networkSetting.enableAutoRetry -> RetryPolicy.NETWORK
+        timeoutSeconds > 0 -> RetryPolicy(
+            maxRetries = 3,
+            retryOn = { it is SocketTimeoutException },
+        )
+        else -> RetryPolicy.NONE
+    }
+}

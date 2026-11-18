@@ -8,6 +8,7 @@ import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.provider.TextGenerationParams
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
+import kotlin.time.Duration
 
 /**
  * 一次 agent 运行的输入。
@@ -24,6 +25,12 @@ data class AgentRequest(
     /** 最多请求模型的次数 */
     val maxSteps: Int = 256,
     val retry: RetryPolicy = RetryPolicy.NONE,
+    /**
+     * 单次模型调用（一次 generateText 或一次流式响应）的硬超时；null 表示不启用。
+     *
+     * 计时在每次重试尝试开始时重新开始；超时后这次请求被终止，并按 [retry] 重新提交。
+     */
+    val requestTimeout: Duration? = null,
 )
 
 /** 调用方在循环各个节点上的介入点 */

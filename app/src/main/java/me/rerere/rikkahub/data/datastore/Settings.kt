@@ -103,6 +103,8 @@ data class NetworkSetting(
     val proxyUsername: String = "",
     val proxyPassword: String = "",
     val enableAutoRetry: Boolean = true,
+    /** LLM 请求超时秒数：单次模型调用超过该时长会被主动终止并自动重新提交；0 表示不启用 */
+    val requestTimeoutSeconds: Int = 0,
 )
 
 @Serializable

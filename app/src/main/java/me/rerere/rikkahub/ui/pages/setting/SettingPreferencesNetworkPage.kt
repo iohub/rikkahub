@@ -53,6 +53,7 @@ import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.remote.toProxyOrNull
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.components.ui.CardGroup
+import me.rerere.rikkahub.ui.components.ui.CardGroupValue
 import me.rerere.rikkahub.ui.components.ui.switchItem
 import me.rerere.rikkahub.ui.context.LocalToaster
 import me.rerere.rikkahub.ui.theme.CustomColors
@@ -85,6 +86,17 @@ fun SettingPreferencesNetworkPage(vm: SettingVM = koinViewModel()) {
     var proxyPasswordDraft by remember { mutableStateOf("") }
     var proxyPasswordVisible by remember { mutableStateOf(false) }
     var proxyDialogVisible by remember { mutableStateOf(false) }
+    var timeoutDialogVisible by remember { mutableStateOf(false) }
+    var timeoutSecondsDraft by remember { mutableStateOf("") }
+    val timeoutSeconds = settings.networkSetting.requestTimeoutSeconds
+    val timeoutSecondsText = if (timeoutSeconds > 0) {
+        stringResource(
+            R.string.setting_page_preferences_network_request_timeout_seconds,
+            timeoutSeconds,
+        )
+    } else {
+        stringResource(R.string.setting_page_preferences_network_request_timeout_disabled)
+    }
     val defaultUserAgent = "RikkaHub-Android/${BuildConfig.VERSION_NAME}"
     val proxyUrlInvalid = proxyUrlDraft.isNotBlank() && proxyUrlDraft.toProxyOrNull() == null
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
@@ -257,6 +269,59 @@ fun SettingPreferencesNetworkPage(vm: SettingVM = koinViewModel()) {
         )
     }
 
+    if (timeoutDialogVisible) {
+        AlertDialog(
+            onDismissRequest = { timeoutDialogVisible = false },
+            modifier = Modifier.imePadding(),
+            title = {
+                Text(stringResource(R.string.setting_page_preferences_network_request_timeout))
+            },
+            text = {
+                OutlinedTextField(
+                    value = timeoutSecondsDraft,
+                    onValueChange = { input -> timeoutSecondsDraft = input.filter { it.isDigit() } },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = {
+                        Text(stringResource(R.string.setting_page_preferences_network_request_timeout))
+                    },
+                    placeholder = { Text("0") },
+                    supportingText = {
+                        Text(
+                            stringResource(
+                                R.string.setting_page_preferences_network_request_timeout_input_hint
+                            )
+                        )
+                    },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        // 空串、非数字和超长数字都回落到 0（不启用）
+                        val seconds = timeoutSecondsDraft.trim().toIntOrNull()?.coerceAtLeast(0) ?: 0
+                        vm.updateSettings {
+                            it.copy(
+                                networkSetting = it.networkSetting.copy(
+                                    requestTimeoutSeconds = seconds,
+                                ),
+                            )
+                        }
+                        timeoutDialogVisible = false
+                    },
+                ) {
+                    Text(stringResource(R.string.common_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { timeoutDialogVisible = false }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
+            },
+        )
+    }
+
     Scaffold(
         topBar = {
             LargeFlexibleTopAppBar(
@@ -294,6 +359,21 @@ fun SettingPreferencesNetworkPage(vm: SettingVM = koinViewModel()) {
                         },
                         headlineContent = {
                             Text(stringResource(R.string.setting_page_preferences_network_auto_retry))
+                        },
+                    )
+                    item(
+                        onClick = {
+                            timeoutSecondsDraft = timeoutSeconds.toString()
+                            timeoutDialogVisible = true
+                        },
+                        headlineContent = {
+                            Text(stringResource(R.string.setting_page_preferences_network_request_timeout))
+                        },
+                        supportingContent = {
+                            Text(stringResource(R.string.setting_page_preferences_network_request_timeout_desc))
+                        },
+                        trailingContent = {
+                            CardGroupValue(text = timeoutSecondsText)
                         },
                     )
                 }
