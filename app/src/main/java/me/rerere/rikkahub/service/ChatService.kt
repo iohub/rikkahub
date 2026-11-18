@@ -282,15 +282,29 @@ class ChatService(
      * 替换后「上次落库状态」恢复正常，后续修改才会走更新而不是被落库闸当作覆盖而跳过。
      *
      * 已经正常加载过的会话保持原样：替换会取消进行中的任务，没必要为它付这个代价。
+     *
+     * 聊天页每次进入、以及助手从隐藏变为可见时都会调用一次，所以这里必须幂等：会话已和数据库对上时
+     * 只做一次字段判断就返回；本次调用才第一次加载的会话也直接跳过（那次加载已经读过库）。
+     * 两种情况都不额外读库、不替换正文，加载失败只记日志，不向调用方抛异常。
      */
     suspend fun reloadConversation(conversationId: Uuid) {
-        withLoadedSession(conversationId) { session ->
-            if (session.existsInDatabase) return@withLoadedSession
-            // 重走一遍带加密门控的加载：已解锁才会拿到真正的正文，仍处于隐藏状态时返回 null，什么都不做
-            val loaded = loadConversation(conversationId) ?: return@withLoadedSession
-            session.replace(conversation = loaded, existsInDatabase = true) {
-                // 只是把内存换成数据库里的内容，数据库本身不需要改动
+        try {
+            // 本次调用如果自己就把会话建了起来（此前没有任何页面加载过），[withLoadedSession] 里的加载已经
+            // 按同一套加密门控读过一次数据库，紧接着再读一次结果不会不同，直接跳过——正常打开的会话因此
+            // 不会因为这次调用多出任何一次读库。真正需要重载的只有「早就加载过、却被门控建成空会话」的那种。
+            val loadedBefore = sessionManager.get(conversationId)?.isInitialized == true
+            withLoadedSession(conversationId) { session ->
+                if (!loadedBefore || session.existsInDatabase) return@withLoadedSession
+                // 重走一遍带加密门控的加载：已解锁才会拿到真正的正文，仍处于隐藏状态时返回 null，什么都不做
+                val loaded = loadConversation(conversationId) ?: return@withLoadedSession
+                session.replace(conversation = loaded, existsInDatabase = true) {
+                    // 只是把内存换成数据库里的内容，数据库本身不需要改动
+                }
             }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to reload conversation $conversationId", e)
         }
     }
 

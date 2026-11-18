@@ -106,6 +106,15 @@ class ChatVM(
 
         // 初始化对话
         viewModelScope.launch {
+            // 先把会话和数据库对齐，再决定当前助手。
+            // 加密期间进过这个会话时，正文被 ChatService.loadConversation 的门控拦下，会话缓存里留下的是一条
+            // 同 id 的空会话；页面重新进入会直接依附到这份缓存上，既没有「隐藏 → 可见」的转换可监听，也没有
+            // 内容可显示，所以这里补一次重载：已解锁就换回数据库里的正文，仍隐藏则什么都不做。
+            // 会话已经和数据库对上时 reloadConversation 立刻返回——不额外读库，也不会替换正文造成闪烁。
+            chatService.reloadConversation(_conversationId)
+
+            // 重载之后再写回当前选中助手：加密期间内存里的助手是那条空会话的可见助手，
+            // 解锁后会话已换回数据库里的真实归属，这里选中的就该是它
             chatService.initializeConversation(_conversationId)
         }
 
