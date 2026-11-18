@@ -13,6 +13,7 @@ import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.Avatar
+import me.rerere.rikkahub.data.repository.AssistantLockManager
 import me.rerere.rikkahub.data.repository.MemoryRepository
 import me.rerere.rikkahub.data.repository.memoryId
 import me.rerere.rikkahub.service.ChatService
@@ -82,6 +83,80 @@ class AssistantVM(
                     fromAssistantId = assistant.id.toString(),
                     toAssistantId = copiedAssistant.id.toString(),
                 )
+            }
+        }
+    }
+
+    /**
+     * 加密隐藏助手。
+     *
+     * 语义：加密成功后**立即**从助手列表/选择器消失（不保留本会话解锁态），
+     * 之后只能通过「5 秒内点击标题 5 次」的隐藏手势输入密码重新显示。
+     *
+     * 如果被加密的正好是当前正在使用的助手，则同时把当前助手切换到第一个未加密的其他助手，
+     * 避免聊天页继续停留在已经隐藏的助手（以及它的会话）上。
+     * 会话本身不删除：解密后原来的对话还在。
+     */
+    fun lockAssistant(assistant: Assistant, password: String) {
+        // 先清掉可能残留的解锁态，保证加密后立刻不可见
+        AssistantLockManager.forget(assistant.id)
+        viewModelScope.launch {
+            settingsStore.update { settings ->
+                // 按最新列表取一次，避免用到调用方传入的过期副本
+                val target = settings.assistants.find { it.id == assistant.id }
+                    ?: return@update settings
+                val locked = target.copy(
+                    isLocked = true,
+                    lockPasswordHash = AssistantLockManager.hashPassword(target.id, password),
+                )
+                val assistants = settings.assistants.map { if (it.id == locked.id) locked else it }
+                val fallback = assistants.firstOrNull { !it.isLocked && it.id != locked.id }
+                settings.copy(
+                    assistants = assistants,
+                    assistantId = if (settings.assistantId == locked.id && fallback != null) {
+                        fallback.id
+                    } else {
+                        settings.assistantId
+                    },
+                )
+            }
+        }
+    }
+
+    /** 取消加密：永久清除加密标记与密码摘要，助手重新常驻列表。 */
+    fun removeLock(assistant: Assistant) {
+        // 顺手清掉会话内解锁态，避免残留 id 影响到之后的使用
+        AssistantLockManager.forget(assistant.id)
+        viewModelScope.launch {
+            settingsStore.update { settings ->
+                settings.copy(
+                    assistants = settings.assistants.map { current ->
+                        if (current.id == assistant.id) {
+                            current.copy(isLocked = false, lockPasswordHash = "")
+                        } else {
+                            current
+                        }
+                    }
+                )
+            }
+        }
+    }
+
+    /** 本会话内解锁（仅内存态，应用重启后自动重新上锁）。 */
+    fun unlockAssistant(assistant: Assistant) {
+        AssistantLockManager.unlock(assistant.id)
+    }
+
+    /** 重新上锁：把已解锁的加密助手再次隐藏。 */
+    fun relockAssistant(assistant: Assistant) {
+        AssistantLockManager.relock(assistant.id)
+        // 与 lockAssistant 保持一致：重新上锁后它就是隐藏助手了，不能继续作为「当前助手」
+        viewModelScope.launch {
+            settingsStore.update { settings ->
+                if (settings.assistantId != assistant.id) return@update settings
+                val fallback = settings.assistants.firstOrNull { !it.isLocked && it.id != assistant.id }
+                    ?: return@update settings
+                settings.copy(assistantId = fallback.id)
             }
         }
     }

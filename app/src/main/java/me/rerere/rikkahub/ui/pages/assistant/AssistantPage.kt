@@ -7,6 +7,9 @@ import me.rerere.hugeicons.stroke.Search01
 import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.Tick01
+import me.rerere.hugeicons.stroke.Lock
+import me.rerere.hugeicons.stroke.LockKey
+import me.rerere.hugeicons.stroke.LockOpen
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -49,6 +52,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -65,6 +69,7 @@ import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.MemoryFile
+import me.rerere.rikkahub.data.repository.AssistantLockManager
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.components.ui.ItemAction
 import me.rerere.rikkahub.ui.components.ui.ItemActionMenu
@@ -73,13 +78,16 @@ import me.rerere.rikkahub.ui.components.ui.TagType
 import me.rerere.rikkahub.ui.components.ui.UIAvatar
 import me.rerere.rikkahub.ui.components.ui.longPressReorder
 import me.rerere.rikkahub.ui.context.LocalNavController
+import me.rerere.rikkahub.ui.context.LocalToaster
 import me.rerere.rikkahub.ui.hooks.EditState
 import me.rerere.rikkahub.ui.hooks.EditStateContent
 import me.rerere.rikkahub.ui.hooks.heroAnimation
+import me.rerere.rikkahub.ui.hooks.multiTap
 import me.rerere.rikkahub.ui.hooks.useEditState
 import me.rerere.rikkahub.ui.pages.assistant.detail.AssistantImporter
 import me.rerere.rikkahub.ui.theme.CustomColors
 import me.rerere.ui.components.RikkaConfirmDialog
+import me.rerere.ui.toast.ToastType
 import org.koin.androidx.compose.koinViewModel
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
@@ -103,23 +111,45 @@ fun AssistantPage(vm: AssistantVM = koinViewModel()) {
     // 待复制的助手(仅在有独立记忆时需要询问是否一并复制)
     var cloneTarget by remember { mutableStateOf<Assistant?>(null) }
     var cloneWithMemories by remember { mutableStateOf(false) }
+    // 待加密隐藏的助手
+    var lockTarget by remember { mutableStateOf<Assistant?>(null) }
+    // 顶栏 5 连击触发的解锁弹窗
+    var showUnlockDialog by remember { mutableStateOf(false) }
 
-    // 根据搜索关键词和选中的标签过滤助手
-    val filteredAssistants = remember(settings.assistants, selectedTagIds, searchQuery) {
+    val toaster = LocalToaster.current
+    val lockedToastText = stringResource(R.string.assistant_lock_locked_toast)
+
+    // 本会话内已解锁的助手 ID：解锁/重新上锁后列表要立即刷新，所以必须作为过滤的 key
+    val unlockedIds by AssistantLockManager.unlockedIds.collectAsStateWithLifecycle()
+
+    // 根据搜索关键词和选中的标签过滤助手，并排除当前处于隐藏状态的加密助手
+    val filteredAssistants = remember(settings.assistants, selectedTagIds, searchQuery, unlockedIds) {
         settings.assistants.filter { assistant ->
+            val visible = !AssistantLockManager.isHidden(assistant)
             val matchesSearch = searchQuery.isBlank() ||
                 assistant.name.contains(searchQuery, ignoreCase = true)
             val matchesTags = selectedTagIds.isEmpty() ||
                 assistant.tags.any { tagId -> tagId in selectedTagIds }
-            matchesSearch && matchesTags
+            visible && matchesSearch && matchesTags
         }
+    }
+
+    // 有助手处于隐藏状态时，列表下标和 settings.assistants 的下标不再一一对应，拖拽排序必须禁用
+    val hasHiddenAssistants = remember(settings.assistants, unlockedIds) {
+        settings.assistants.any { AssistantLockManager.isHidden(it) }
     }
 
     Scaffold(
         topBar = {
             LargeFlexibleTopAppBar(
                 title = {
-                    Text(stringResource(R.string.assistant_page_title))
+                    // 隐藏手势：5 秒内连点标题 5 次打开解锁弹窗（无涟漪，避免暴露入口）
+                    Text(
+                        text = stringResource(R.string.assistant_page_title),
+                        modifier = Modifier.multiTap(taps = 5, windowMillis = 5_000L) {
+                            showUnlockDialog = true
+                        },
+                    )
                 },
                 navigationIcon = {
                     BackButton()
@@ -149,8 +179,12 @@ fun AssistantPage(vm: AssistantVM = koinViewModel()) {
         ) {
             val lazyListState = rememberLazyListState()
             val isFiltering = selectedTagIds.isNotEmpty() || searchQuery.isNotBlank()
+            // 列表被过滤（搜索/标签）或存在隐藏助手时，列表下标和 settings.assistants 的下标不一致，
+            // 拖拽重排会把助手插到错误的位置，因此这两种情况下都禁用排序
+            val reorderEnabled = !isFiltering && !hasHiddenAssistants
+            val reorderEnabledState = rememberUpdatedState(reorderEnabled)
             val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
-                if (!isFiltering) {
+                if (reorderEnabledState.value) {
                     val newAssistants = settings.assistants.toMutableList().apply {
                         add(to.index, removeAt(from.index))
                     }
@@ -231,10 +265,19 @@ fun AssistantPage(vm: AssistantVM = koinViewModel()) {
                             onDelete = {
                                 deleteTarget = assistant
                             },
+                            onLock = {
+                                lockTarget = assistant
+                            },
+                            onRemoveLock = {
+                                vm.removeLock(assistant)
+                            },
+                            onRelock = {
+                                vm.relockAssistant(assistant)
+                            },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .animateItem()
-                                .then(longPressReorder(isDragging, enabled = !isFiltering))
+                                .then(longPressReorder(isDragging, enabled = reorderEnabled))
                         )
                     }
                 }
@@ -243,6 +286,32 @@ fun AssistantPage(vm: AssistantVM = koinViewModel()) {
     }
 
     AssistantCreationSheet(createState)
+
+    // 加密隐藏：设置密码，确认后该助手立即从列表消失
+    lockTarget?.let { target ->
+        AssistantSetPasswordDialog(
+            assistant = target,
+            onConfirm = { password ->
+                vm.lockAssistant(target, password)
+                lockTarget = null
+                toaster.show(lockedToastText, type = ToastType.Success)
+            },
+            onDismiss = { lockTarget = null },
+        )
+    }
+
+    // 隐藏手势（连点标题 5 次）触发的解锁弹窗
+    if (showUnlockDialog) {
+        AssistantUnlockDialog(
+            lockedCount = settings.assistants.count { it.isLocked },
+            onUnlock = { password ->
+                val matched = AssistantLockManager.matchLocked(settings.assistants, password)
+                matched.forEach { vm.unlockAssistant(it) }
+                matched.isNotEmpty()
+            },
+            onDismiss = { showUnlockDialog = false },
+        )
+    }
 
     RikkaConfirmDialog(
         show = deleteTarget != null,
@@ -420,7 +489,19 @@ private fun AssistantItem(
     onEdit: () -> Unit,
     onCopy: () -> Unit,
     onDelete: () -> Unit,
+    onLock: () -> Unit,
+    onRemoveLock: () -> Unit,
+    onRelock: () -> Unit,
 ) {
+    // 已加密但本会话内已解锁（隐藏中的助手不会渲染到列表里，所以这里 assistant.isLocked 即代表已解锁）
+    val isUnlocked = assistant.isLocked && AssistantLockManager.isUnlocked(assistant.id)
+    val cloneLabel = stringResource(R.string.assistant_page_clone)
+    val deleteLabel = stringResource(R.string.assistant_page_delete)
+    val lockLabel = stringResource(R.string.assistant_lock_action)
+    val removeLockLabel = stringResource(R.string.assistant_lock_remove)
+    val relockLabel = stringResource(R.string.assistant_lock_relock)
+    val lockBadgeLabel = stringResource(R.string.assistant_lock_badge)
+
     Card(
         modifier = modifier.fillMaxWidth(),
         onClick = onEdit,
@@ -460,6 +541,12 @@ private fun AssistantItem(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    if (assistant.isLocked) {
+                        Tag(type = TagType.WARNING) {
+                            Text(lockBadgeLabel)
+                        }
+                    }
+
                     if (assistant.enableMemory) {
                         Tag(type = TagType.SUCCESS) {
                             Text(stringResource(R.string.assistant_page_memory_count, memories.size))
@@ -493,20 +580,48 @@ private fun AssistantItem(
             }
 
             ItemActionMenu(
-                actions = listOf(
-                    ItemAction(
-                        text = stringResource(R.string.assistant_page_clone),
-                        icon = HugeIcons.Copy01,
-                        onClick = onCopy,
-                    ),
-                    ItemAction(
-                        text = stringResource(R.string.assistant_page_delete),
-                        icon = HugeIcons.Delete01,
-                        destructive = true,
-                        enabled = settings.assistants.size > 1,
-                        onClick = onDelete,
-                    ),
-                )
+                actions = buildList {
+                    add(
+                        ItemAction(
+                            text = cloneLabel,
+                            icon = HugeIcons.Copy01,
+                            onClick = onCopy,
+                        )
+                    )
+                    if (!assistant.isLocked) {
+                        add(
+                            ItemAction(
+                                text = lockLabel,
+                                icon = HugeIcons.LockKey,
+                                onClick = onLock,
+                            )
+                        )
+                    } else if (isUnlocked) {
+                        add(
+                            ItemAction(
+                                text = removeLockLabel,
+                                icon = HugeIcons.LockOpen,
+                                onClick = onRemoveLock,
+                            )
+                        )
+                        add(
+                            ItemAction(
+                                text = relockLabel,
+                                icon = HugeIcons.Lock,
+                                onClick = onRelock,
+                            )
+                        )
+                    }
+                    add(
+                        ItemAction(
+                            text = deleteLabel,
+                            icon = HugeIcons.Delete01,
+                            destructive = true,
+                            enabled = settings.assistants.size > 1,
+                            onClick = onDelete,
+                        )
+                    )
+                }
             )
         }
     }
