@@ -193,11 +193,13 @@ fun SettingSshTunnelDetailPage(tunnelId: String) {
      *
      * 只覆盖命令里确实出现的字段: 纯登录命令 (`ssh -p 22 root@host`) 不带 `-L`,
      * 此时绝不动转发相关字段, 免得把用户已经填好的转发配置清空。
+     * 端口同理: `ParsedSshTunnel.port` 恒有值 (缺省 22), 必须看 [ParsedSshTunnel.hasPort]
+     * 才知道命令里是否真的写了 `-p` / `ssh://host:port`, 否则会把已填端口静默重置成 22。
      */
     fun fillFromParsed(parsed: ParsedSshTunnel) {
         if (parsed.host.isNotBlank()) host = parsed.host
         if (parsed.username.isNotBlank()) username = parsed.username
-        if (parsed.port in 1..65535) portText = parsed.port.toString()
+        if (parsed.hasPort && parsed.port in 1..65535) portText = parsed.port.toString()
         if (parsed.hasForward) {
             if (parsed.bindAddress.isNotBlank()) bindAddress = parsed.bindAddress
             parsed.localPort?.let { localPortText = it.toString() }

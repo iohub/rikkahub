@@ -12,6 +12,8 @@ package me.rerere.rikkahub.utils
 data class ParsedSshTunnel(
     val host: String = "",
     val port: Int = DEFAULT_SSH_PORT,
+    /** 命令里是否显式写了 `-p` 或 `ssh://host:port` 形式的端口; 纯 `ssh user@host` 为 false */
+    val hasPort: Boolean = false,
     val username: String = "",
     /** 本地监听地址, 命令里没写 `bind_address` 时就是 127.0.0.1; 没有 `-L` 时为空串 */
     val bindAddress: String = DEFAULT_LOOPBACK,
@@ -43,7 +45,7 @@ private val VALUE_OPTIONS = setOf(
 
 /**
  * 解析一条 openssh 命令, 支持 `-L [bind_address:]port:host:hostport`、`-p`、`-l`、`-i`
- * 以及 `user@host` / `ssh://user@host:port` 形式的目标主机。
+ * 以及 `user@host` / `ssh://user@host:port` 形式的目标主机 (整条命令就是 ssh:// 地址时也算)。
  *
  * 其它选项 (`-N`、`-f`、`-v`、`-o Key=Value`、`-J host` ...) 一律忽略, 需要提醒用户的地方写进
  * [ParsedSshTunnel.warnings]。
@@ -59,6 +61,11 @@ fun parseSshCommand(raw: String): ParsedSshTunnel? {
         tokens = tokenize(tokens.first()) ?: return null
     }
     if (tokens.isEmpty()) return null
+    // 裸的 ssh://user@host:port (不带 ssh 命令前缀) 也是一种常见粘法, 补个占位让后面的
+    // 位置参数解析照常走 parseDestination
+    if (tokens.size == 1 && tokens.first().startsWith(SCHEME_PREFIX, ignoreCase = true)) {
+        tokens = listOf("ssh") + tokens
+    }
     if (!tokens.first().substringAfterLast('/').equals("ssh", ignoreCase = true)) return null
 
     val warnings = mutableListOf<String>()
@@ -145,6 +152,9 @@ fun parseSshCommand(raw: String): ParsedSshTunnel? {
     return ParsedSshTunnel(
         host = host,
         port = optionPort ?: urlPort ?: DEFAULT_SSH_PORT,
+        // 只有命令里真的写了有效端口 (选项端口或 URL 端口) 才算显式指定;
+        // 缺省时的 22 只是给模型层兜底, 界面不应该拿它去覆盖用户已填的端口
+        hasPort = optionPort != null || urlPort != null,
         username = username,
         // 纯登录命令没有转发, 监听地址/目标主机保持为空, 不要臆造 127.0.0.1 之类的默认目标
         bindAddress = if (forwardSeen) bindAddress else "",

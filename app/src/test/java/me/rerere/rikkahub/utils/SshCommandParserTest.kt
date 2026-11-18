@@ -16,6 +16,7 @@ class SshCommandParserTest {
         parsed!!
         assertEquals("region-41.seetacloud.com", parsed.host)
         assertEquals(15061, parsed.port)
+        assertTrue(parsed.hasPort)
         assertEquals("root", parsed.username)
         assertEquals("127.0.0.1", parsed.bindAddress)
         assertEquals(6008, parsed.localPort)
@@ -35,6 +36,8 @@ class SshCommandParserTest {
         assertEquals("admin", parsed.username)
         assertEquals("example.com", parsed.host)
         assertEquals(22, parsed.port)
+        // 命令里没有 -p, 默认 22 只是兜底值, 不表示用户显式指定了端口
+        assertFalse(parsed.hasPort)
         assertEquals(8080, parsed.localPort)
         assertEquals("127.0.0.1", parsed.remoteHost)
         assertEquals(80, parsed.remotePort)
@@ -49,6 +52,7 @@ class SshCommandParserTest {
         parsed!!
         assertEquals("~/.ssh/id_ed25519", parsed.identityFile)
         assertEquals("dev", parsed.username)
+        assertFalse(parsed.hasPort)
         assertTrue(parsed.warnings.any { it.contains("私钥") })
     }
 
@@ -62,6 +66,7 @@ class SshCommandParserTest {
         assertEquals(8080, parsed.localPort)
         assertEquals("db.internal", parsed.remoteHost)
         assertEquals(5432, parsed.remotePort)
+        assertFalse(parsed.hasPort)
     }
 
     @Test
@@ -72,6 +77,7 @@ class SshCommandParserTest {
         parsed!!
         assertEquals(6009, parsed.localPort)
         assertEquals(15061, parsed.port)
+        assertTrue(parsed.hasPort)
         assertEquals("root", parsed.username)
         assertEquals("host", parsed.host)
     }
@@ -85,6 +91,22 @@ class SshCommandParserTest {
         assertEquals("someone", parsed.username)
         assertEquals("example.com", parsed.host)
         assertEquals(2222, parsed.port)
+        assertTrue(parsed.hasPort)
+    }
+
+    @Test
+    fun `ssh url without -L reports port as explicit`() {
+        val parsed = parseSshCommand("ssh://someone@example.com:2222")
+
+        assertNotNull(parsed)
+        parsed!!
+        assertEquals("someone", parsed.username)
+        assertEquals("example.com", parsed.host)
+        assertEquals(2222, parsed.port)
+        // URL 形式的端口同样是用户显式写的, 应该回填到端口框
+        assertTrue(parsed.hasPort)
+        assertFalse(parsed.hasForward)
+        assertTrue(parsed.warnings.isEmpty())
     }
 
     @Test
@@ -104,6 +126,7 @@ class SshCommandParserTest {
         assertEquals(6008, parsed.localPort)
         assertEquals("a", parsed.remoteHost)
         assertEquals(1, parsed.remotePort)
+        assertFalse(parsed.hasPort)
         assertTrue(parsed.warnings.any { it.contains("-L") })
     }
 
@@ -114,6 +137,9 @@ class SshCommandParserTest {
         assertNull(noForward.localPort)
         assertNull(noForward.remotePort)
         assertFalse(noForward.hasForward)
+        // 没有 -p 时端口取默认 22, 但不算用户显式指定, 不应该回填到端口框
+        assertEquals(22, noForward.port)
+        assertFalse(noForward.hasPort)
         assertTrue(noForward.warnings.isEmpty())
 
         // 没有目标主机才是真正的错误
@@ -132,6 +158,7 @@ class SshCommandParserTest {
         parsed!!
         assertEquals("region-42.seetacloud.com", parsed.host)
         assertEquals(36724, parsed.port)
+        assertTrue(parsed.hasPort)
         assertEquals("root", parsed.username)
         assertFalse(parsed.hasForward)
         // 没有 -L 就不要臆造转发配置
@@ -142,12 +169,31 @@ class SshCommandParserTest {
     }
 
     @Test
+    fun `plain login command without -p keeps default port but no explicit flag`() {
+        val parsed = parseSshCommand("ssh root@region-42.seetacloud.com")
+
+        assertNotNull(parsed)
+        parsed!!
+        assertEquals("region-42.seetacloud.com", parsed.host)
+        assertEquals("root", parsed.username)
+        // 解析结果里仍要有一个可用端口, 缺省保留 22
+        assertEquals(22, parsed.port)
+        // 但命令里没写端口, 界面不应该拿这个 22 去覆盖用户已填的端口
+        assertFalse(parsed.hasPort)
+        assertFalse(parsed.hasForward)
+        assertEquals("", parsed.remoteHost)
+        assertTrue(parsed.warnings.isEmpty())
+    }
+
+    @Test
     fun `forward command is flagged as tunnel while plain login is not`() {
         val tunnel = parseSshCommand("ssh -L 8080:localhost:80 root@host")!!
         assertTrue(tunnel.hasForward)
+        assertFalse(tunnel.hasPort)
 
         val login = parseSshCommand("ssh -p 2222 root@host")!!
         assertFalse(login.hasForward)
+        assertTrue(login.hasPort)
         assertTrue(login.warnings.isEmpty())
     }
 
@@ -156,6 +202,8 @@ class SshCommandParserTest {
         val parsed = parseSshCommand("ssh -p 70000 -L 0:localhost:99999 root@host")!!
 
         assertEquals(22, parsed.port)
+        // -p 70000 越界已被忽略并写入 warning, 因此不算显式指定端口
+        assertFalse(parsed.hasPort)
         assertNull(parsed.localPort)
         assertNull(parsed.remotePort)
         assertTrue(parsed.warnings.size >= 2)
