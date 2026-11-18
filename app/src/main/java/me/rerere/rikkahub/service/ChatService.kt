@@ -51,6 +51,7 @@ import me.rerere.rikkahub.data.ai.prompts.buildCompressPrompt
 import me.rerere.rikkahub.data.ai.tools.InvalidMcpServerNamesException
 import me.rerere.rikkahub.data.ai.tools.shouldUseExternalWebSearch
 import me.rerere.rikkahub.data.datastore.SettingsStore
+import me.rerere.rikkahub.data.datastore.getAssistantById
 import me.rerere.rikkahub.data.datastore.getCurrentAssistant
 import me.rerere.rikkahub.data.event.AppEvent
 import me.rerere.rikkahub.data.event.AppEventBus
@@ -79,6 +80,7 @@ import me.rerere.rikkahub.data.model.withToolApproval
 import me.rerere.rikkahub.data.model.withTranslation
 import me.rerere.rikkahub.data.model.withoutConversationFields
 import me.rerere.rikkahub.data.model.withoutUnresumableToolCalls
+import me.rerere.rikkahub.data.repository.AssistantLockManager
 import me.rerere.rikkahub.data.repository.ConversationRepository
 import me.rerere.rikkahub.data.repository.FolderRepository
 import me.rerere.rikkahub.web.BadRequestException
@@ -304,7 +306,12 @@ class ChatService(
 
     suspend fun initializeConversation(conversationId: Uuid) {
         withLoadedSession(conversationId) { session ->
-            settingsStore.selectAssistant(session.state.value.assistantId)
+            // 加密隐藏的助手不写回当前选中助手：选择器里看不到它，却会被它选中
+            val assistantId = session.state.value.assistantId
+            val assistant = settingsStore.awaitLoaded().getAssistantById(assistantId)
+            if (assistant == null || !AssistantLockManager.isHidden(assistant)) {
+                settingsStore.selectAssistant(assistantId)
+            }
         }
     }
 
@@ -333,7 +340,13 @@ class ChatService(
 
     // 新建对话, 并添加预设消息
     private suspend fun newConversation(conversationId: Uuid): Conversation {
-        val assistant = settingsStore.awaitLoaded().getCurrentAssistant()
+        val settings = settingsStore.awaitLoaded()
+        // 当前助手被加密隐藏时不能拿它建会话：优先退到第一个可见助手，全都加密时才用当前助手
+        val current = settings.getCurrentAssistant()
+        val assistant = current
+            .takeUnless { AssistantLockManager.isHidden(it) }
+            ?: settings.assistants.firstOrNull { !AssistantLockManager.isHidden(it) }
+            ?: current
         return Conversation.ofId(
             id = conversationId,
             assistantId = assistant.id,
@@ -345,7 +358,12 @@ class ChatService(
     private suspend fun loadConversation(conversationId: Uuid): Conversation? {
         val conversation = conversationRepo.getConversationById(conversationId) ?: return null
         // settingsFlow 在启动初期还是占位值，固定配置必须基于真实设置
-        val bound = conversation.bindConfig(settingsStore.awaitLoaded())
+        val settings = settingsStore.awaitLoaded()
+        // 助手的会话处于加密隐藏状态时当作不存在：交给上层新建空会话，不渲染任何历史正文。
+        // 助手已被删除的孤儿会话照常加载，否则这些对话再也打不开。
+        val owner = settings.getAssistantById(conversation.assistantId)
+        if (owner != null && AssistantLockManager.isHidden(owner)) return null
+        val bound = conversation.bindConfig(settings)
         if (bound !== conversation) conversationRepo.updateConversationConfig(bound)
         return bound
     }
