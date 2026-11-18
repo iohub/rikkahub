@@ -79,8 +79,17 @@ class HistoryVM(
     }
 
     fun getPinnedConversations(): Flow<List<Conversation>> =
-        combine(currentAssistantHidden, conversationRepo.getPinnedConversations()) { hidden, pinned ->
-            // 当前助手被加密隐藏时，置顶列表同样不能泄露内容
-            if (hidden) emptyList() else pinned
+        combine(
+            settingsStore.settingsFlow,
+            conversationRepo.getPinnedConversations(),
+            AssistantLockManager.unlockedIds,
+        ) { settings, pinned, unlockedIds ->
+            // 底层查询是全局的（所有助手的置顶都在里面），所以按「可见助手集合」逐个过滤：
+            // 隐藏助手的置顶不能泄露内容，其它助手的置顶也不该被当前助手的锁连带隐藏
+            pinned.filter { conversation ->
+                val owner = settings.assistants.find { it.id == conversation.assistantId }
+                // 助手已被删除的孤儿会话照常显示，和 ChatService.loadConversation 的策略一致
+                owner == null || !(owner.isLocked && owner.id !in unlockedIds)
+            }
         }
 }

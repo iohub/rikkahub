@@ -96,33 +96,37 @@ class AssistantVM(
      * 如果被加密的正好是当前正在使用的助手，则同时把当前助手切换到第一个未加密的其他助手，
      * 避免聊天页继续停留在已经隐藏的助手（以及它的会话）上。
      * 会话本身不删除：解密后原来的对话还在。
+     *
+     * @return 是否真的加密成功。至少要保留一个未加密助手，被拒绝时返回 false，界面据此不能谎报成功。
      */
-    fun lockAssistant(assistant: Assistant, password: String) {
+    suspend fun lockAssistant(assistant: Assistant, password: String): Boolean {
         // 先清掉可能残留的解锁态，保证加密后立刻不可见
         AssistantLockManager.forget(assistant.id)
-        viewModelScope.launch {
-            settingsStore.update { settings ->
-                // 按最新列表取一次，避免用到调用方传入的过期副本
-                val target = settings.assistants.find { it.id == assistant.id }
-                    ?: return@update settings
-                // 边界保护：不允许把所有助手都加密，否则当前助手指向隐藏助手会泄漏会话内容
-                if (settings.assistants.count { !it.isLocked } <= 1) return@update settings
-                val locked = target.copy(
-                    isLocked = true,
-                    lockPasswordHash = AssistantLockManager.hashPassword(target.id, password),
-                )
-                val assistants = settings.assistants.map { if (it.id == locked.id) locked else it }
-                val fallback = assistants.firstOrNull { !it.isLocked && it.id != locked.id }
-                settings.copy(
-                    assistants = assistants,
-                    assistantId = if (settings.assistantId == locked.id && fallback != null) {
-                        fallback.id
-                    } else {
-                        settings.assistantId
-                    },
-                )
-            }
+        var locked = false
+        settingsStore.update { settings ->
+            // 按最新列表取一次，避免用到调用方传入的过期副本
+            val target = settings.assistants.find { it.id == assistant.id }
+                ?: return@update settings
+            // 边界保护：不允许把所有助手都加密，否则当前助手指向隐藏助手会泄漏会话内容。
+            // 这里静默跳过时必须让界面知道，否则会误报「已加密隐藏」
+            if (settings.assistants.count { !it.isLocked } <= 1) return@update settings
+            locked = true
+            val lockedAssistant = target.copy(
+                isLocked = true,
+                lockPasswordHash = AssistantLockManager.hashPassword(target.id, password),
+            )
+            val assistants = settings.assistants.map { if (it.id == lockedAssistant.id) lockedAssistant else it }
+            val fallback = assistants.firstOrNull { !it.isLocked && it.id != lockedAssistant.id }
+            settings.copy(
+                assistants = assistants,
+                assistantId = if (settings.assistantId == lockedAssistant.id && fallback != null) {
+                    fallback.id
+                } else {
+                    settings.assistantId
+                },
+            )
         }
+        return locked
     }
 
     /** 取消加密：永久清除加密标记与密码摘要，助手重新常驻列表。 */

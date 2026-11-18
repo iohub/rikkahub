@@ -61,9 +61,24 @@ class ChatDrawerVM(
     private val _selectedFolderId = MutableStateFlow<Uuid?>(null)
     val selectedFolderId: StateFlow<Uuid?> = _selectedFolderId.asStateFlow()
 
-    // 当前助手的文件夹列表（Room Flow，增删改自动刷新）
-    val folders: StateFlow<List<Folder>> = assistantIdFlow
-        .flatMapLatest { folderRepo.getFoldersOfAssistant(it) }
+    // 当前助手是否处于「加密隐藏」状态：已加密且本会话尚未解锁。
+    // AssistantLockManager.unlockedIds 是进程内 StateFlow，必须参与 combine —— 解锁后列表要立刻恢复。
+    private val currentAssistantHiddenFlow: Flow<Boolean> = combine(
+        settingsStore.settingsFlow,
+        AssistantLockManager.unlockedIds,
+    ) { settings, unlockedIds ->
+        val current = settings.assistants.find { it.id == settings.assistantId } ?: return@combine false
+        current.isLocked && current.id !in unlockedIds
+    }.distinctUntilChanged()
+
+    // 当前助手的文件夹列表（Room Flow，增删改自动刷新）。
+    // 助手被加密隐藏时整体不给：文件夹名本身就会泄漏隐藏助手的存在，解锁后 combine 自动恢复
+    val folders: StateFlow<List<Folder>> = combine(assistantIdFlow, currentAssistantHiddenFlow) { assistantId, hidden ->
+        assistantId.takeUnless { hidden }
+    }
+        .flatMapLatest { assistantId ->
+            if (assistantId == null) flowOf(emptyList()) else folderRepo.getFoldersOfAssistant(assistantId)
+        }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // 当前助手的记忆库是否正在后台整理；没开记忆的助手即使共用的全局记忆库在整理也不显示
@@ -77,14 +92,6 @@ class ChatDrawerVM(
 
     // 当前助手是否处于「加密隐藏」状态：已加密且本会话尚未解锁。
     // AssistantLockManager.unlockedIds 是进程内 StateFlow，必须参与 combine —— 解锁后列表要立刻恢复。
-    private val currentAssistantHiddenFlow: Flow<Boolean> = combine(
-        settingsStore.settingsFlow,
-        AssistantLockManager.unlockedIds,
-    ) { settings, unlockedIds ->
-        val current = settings.assistants.find { it.id == settings.assistantId } ?: return@combine false
-        current.isLocked && current.id !in unlockedIds
-    }.distinctUntilChanged()
-
     val conversations: Flow<PagingData<ConversationListItem>> =
         combine(
             assistantIdFlow,

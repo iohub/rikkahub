@@ -715,4 +715,29 @@ class ConversationSessionTest {
             scope.cancel()
         }
     }
+
+    @Test
+    fun `replacing a stale empty session restores history and later saves are updates`() = runBlocking {
+        val id = Uuid.random()
+        // 助手加密隐藏时正文被拦下，内存里只剩一条同 id 的空会话
+        val store = FakeConversationStore()
+        val session = ConversationSession(id, Conversation.ofId(id), this, store, {})
+        session.initialize(load = { null }, create = { Conversation.ofId(id) })
+        assertFalse(session.existsInDatabase)
+
+        // 解锁后重新加载数据库里的正文，整条替换（ChatService.reloadConversation 的做法）
+        val history = Conversation.ofId(id)
+            .updateCurrentMessages(listOf(UIMessage.user("locked history")))
+        session.replace(conversation = history, existsInDatabase = true) {}
+
+        // 之后发消息必须走更新：previous 是替换后的内容，不再是「从未落库」的 null
+        session.update { it.updateCurrentMessages(it.currentMessages + UIMessage.user("new message")) }
+        session.flush()
+
+        val (previous, current) = store.writes.single()
+        assertNotNull("Replacing the session must restore the last written state", previous)
+        assertEquals(2, current.currentMessages.size)
+        assertEquals("locked history", store.persisted!!.currentMessages.first().toText())
+        assertTrue(session.existsInDatabase)
+    }
 }

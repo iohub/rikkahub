@@ -52,6 +52,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -64,6 +65,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastForEach
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.launch
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.data.datastore.Settings
@@ -117,7 +119,9 @@ fun AssistantPage(vm: AssistantVM = koinViewModel()) {
     var showUnlockDialog by remember { mutableStateOf(false) }
 
     val toaster = LocalToaster.current
+    val scope = rememberCoroutineScope()
     val lockedToastText = stringResource(R.string.assistant_lock_locked_toast)
+    val lockFailedText = stringResource(R.string.assistant_lock_failed_keep_one)
 
     // 本会话内已解锁的助手 ID：解锁/重新上锁后列表要立即刷新，所以必须作为过滤的 key
     val unlockedIds by AssistantLockManager.unlockedIds.collectAsStateWithLifecycle()
@@ -143,13 +147,18 @@ fun AssistantPage(vm: AssistantVM = koinViewModel()) {
         topBar = {
             LargeFlexibleTopAppBar(
                 title = {
-                    // 隐藏手势：5 秒内连点标题 5 次打开解锁弹窗（无涟漪，避免暴露入口）
-                    Text(
-                        text = stringResource(R.string.assistant_page_title),
-                        modifier = Modifier.multiTap(taps = 5, windowMillis = 5_000L) {
-                            showUnlockDialog = true
-                        },
-                    )
+                    // 隐藏手势：5 秒内连点标题 5 次打开解锁弹窗（无涟漪，避免暴露入口）。
+                    // 用撑满标题栏的 Row 承载手势，热区覆盖整行而不只是文字，视觉保持不变
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .multiTap(taps = 5, windowMillis = 5_000L) {
+                                showUnlockDialog = true
+                            },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(text = stringResource(R.string.assistant_page_title))
+                    }
                 },
                 navigationIcon = {
                     BackButton()
@@ -248,6 +257,8 @@ fun AssistantPage(vm: AssistantVM = koinViewModel()) {
                         )
                         AssistantItem(
                             assistant = assistant,
+                            // 用外层已订阅的 unlockedIds 显式算出解锁态，避免在子 Composable 里读 StateFlow.value 而不触发重组
+                            isUnlocked = assistant.isLocked && assistant.id in unlockedIds,
                             settings = settings,
                             memories = memories,
                             onEdit = {
@@ -292,9 +303,15 @@ fun AssistantPage(vm: AssistantVM = koinViewModel()) {
         AssistantSetPasswordDialog(
             assistant = target,
             onConfirm = { password ->
-                vm.lockAssistant(target, password)
                 lockTarget = null
-                toaster.show(lockedToastText, type = ToastType.Success)
+                scope.launch {
+                    // 至少保留一个未加密助手：加密被拒绝时不能谎报成功
+                    val locked = vm.lockAssistant(target, password)
+                    toaster.show(
+                        if (locked) lockedToastText else lockFailedText,
+                        type = if (locked) ToastType.Success else ToastType.Warning,
+                    )
+                }
             },
             onDismiss = { lockTarget = null },
         )
@@ -483,6 +500,7 @@ private fun AssistantCreationSheet(
 @Composable
 private fun AssistantItem(
     assistant: Assistant,
+    isUnlocked: Boolean,
     settings: Settings,
     modifier: Modifier = Modifier,
     memories: List<MemoryFile>,
@@ -493,8 +511,6 @@ private fun AssistantItem(
     onRemoveLock: () -> Unit,
     onRelock: () -> Unit,
 ) {
-    // 已加密但本会话内已解锁（隐藏中的助手不会渲染到列表里，所以这里 assistant.isLocked 即代表已解锁）
-    val isUnlocked = assistant.isLocked && AssistantLockManager.isUnlocked(assistant.id)
     val cloneLabel = stringResource(R.string.assistant_page_clone)
     val deleteLabel = stringResource(R.string.assistant_page_delete)
     val lockLabel = stringResource(R.string.assistant_lock_action)

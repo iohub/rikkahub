@@ -17,6 +17,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
@@ -164,6 +165,21 @@ class ChatVM(
     // 助手找不到（助手被删除后的孤儿会话）时按未隐藏处理，和 ChatService.loadConversation 一致
     private fun Settings.isAssistantIdHidden(assistantId: Uuid?): Boolean =
         assistantId?.let { getAssistantById(it) }?.let(AssistantLockManager::isHidden) == true
+
+    init {
+        // 助手从隐藏变为可见（解锁）时重新加载一次会话：加密期间正文被 ChatService.loadConversation 拦下，
+        // 内存里可能只剩一条同 id 的空会话，不重载的话页面一直空白，新消息还会被落库闸静默丢弃。
+        // 只在 true → false 的那一次触发，之后正常收发消息不会再重载。
+        viewModelScope.launch {
+            var wasHidden = isAssistantHidden.value
+            isAssistantHidden.collect { hidden ->
+                if (wasHidden && !hidden) {
+                    chatService.reloadConversation(_conversationId)
+                }
+                wasHidden = hidden
+            }
+        }
+    }
 
     // 会话视角下的助手：会话开始后，模型、思考级别、搜索等以会话上固定的配置为准
     val assistant: StateFlow<Assistant> = combine(settings, configuredConversation) { settings, conversation ->

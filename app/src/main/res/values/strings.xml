@@ -39,6 +39,7 @@
   <string name="assistant_lock_chat_hint">Go to Assistant settings and tap the title 5 times within 5 seconds to unlock.</string>
   <string name="assistant_lock_chat_message">This assistant is encrypted. Unlock it to view the conversation.</string>
   <string name="assistant_lock_chat_title">Assistant is locked</string>
+  <string name="assistant_lock_failed_keep_one">At least one unencrypted assistant must remain</string>
   <string name="assistant_lock_locked_toast">Assistant encrypted. Tap the title 5 times within 5 seconds to unlock.</string>
   <string name="assistant_lock_no_hidden">No encrypted assistants</string>
   <string name="assistant_lock_password">Password</string>

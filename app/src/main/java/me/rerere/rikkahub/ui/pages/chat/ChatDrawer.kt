@@ -122,6 +122,19 @@ fun ChatDrawerContent(
     val folders by drawerVm.folders.collectAsStateWithLifecycle()
     val selectedFolderId by drawerVm.selectedFolderId.collectAsStateWithLifecycle()
     val memoryDreaming by drawerVm.memoryDreaming.collectAsStateWithLifecycle()
+
+    // 本会话内已解锁的助手 ID。加密隐藏时文件夹栏与记忆库入口都要一起消失，
+    // 所以必须在 Composable 内订阅解锁集合，解锁后才切回来
+    val unlockedIds by AssistantLockManager.unlockedIds.collectAsStateWithLifecycle()
+    val currentAssistantHidden = remember(settings.assistants, settings.assistantId, unlockedIds) {
+        settings.assistants
+            .find { it.id == settings.assistantId }
+            ?.let(AssistantLockManager::isHidden) == true
+    }
+    // 隐藏的加密助手不能作为「移动到助手」/分享的目标，解锁后自动恢复
+    val visibleAssistants = remember(settings.assistants, unlockedIds) {
+        AssistantLockManager.filterHidden(settings.assistants)
+    }
     val conversationListState = rememberLazyListState(
         initialFirstVisibleItemIndex = drawerVm.scrollIndex,
         initialFirstVisibleItemScrollOffset = drawerVm.scrollOffset,
@@ -346,7 +359,8 @@ fun ChatDrawerContent(
                 }
             )
 
-            if (memoryDreaming) {
+            // 记忆库入口在助手处于加密隐藏时一并消失：点进去就是隐藏助手的记忆文件
+            if (memoryDreaming && !currentAssistantHidden) {
                 MemoryDreamingEntry(
                     onClick = { navController.navigate(Screen.AssistantMemory(settings.assistantId.toString())) },
                 )
@@ -719,7 +733,8 @@ fun ChatDrawerContent(
                 LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    items(settings.assistants) { assistant ->
+                    // 隐藏的加密助手不能作为移动目标：否则会话会被挂到用户看不到的助手上
+                    items(visibleAssistants) { assistant ->
                         AssistantItem(
                             assistant = assistant,
                             isCurrentAssistant = assistant.id == conversationToMove?.assistantId,

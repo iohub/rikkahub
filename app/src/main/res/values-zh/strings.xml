@@ -39,6 +39,7 @@
   <string name="assistant_lock_chat_hint">请到助手设置页，在 5 秒内连续点击标题 5 次进行解锁。</string>
   <string name="assistant_lock_chat_message">该助手已加密隐藏，解锁后才能查看对话内容。</string>
   <string name="assistant_lock_chat_title">助手已加密</string>
+  <string name="assistant_lock_failed_keep_one">至少需要保留一个未加密的助手</string>
   <string name="assistant_lock_locked_toast">已加密隐藏；在助手设置页 5 秒内连续点击标题 5 次即可解锁。</string>
   <string name="assistant_lock_no_hidden">没有已加密的助手</string>
   <string name="assistant_lock_password">密码</string>

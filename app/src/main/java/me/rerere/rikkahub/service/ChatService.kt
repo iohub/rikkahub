@@ -274,6 +274,26 @@ class ChatService(
     suspend fun getConversationAssistantId(conversationId: Uuid): Uuid? =
         conversationRepo.getConversationById(conversationId)?.assistantId
 
+    /**
+     * 重新从数据库加载会话，用于助手解锁后替换加密期间建立的陈旧空会话。
+     *
+     * 只处理还没和数据库对上过的会话（[ConversationSession.existsInDatabase] 为 false）：那正是正文被
+     * [loadConversation] 的加密门控拦下后、用同一个 id 新建的空会话，内存里本来就没有内容，整条替换不会丢东西；
+     * 替换后「上次落库状态」恢复正常，后续修改才会走更新而不是被落库闸当作覆盖而跳过。
+     *
+     * 已经正常加载过的会话保持原样：替换会取消进行中的任务，没必要为它付这个代价。
+     */
+    suspend fun reloadConversation(conversationId: Uuid) {
+        withLoadedSession(conversationId) { session ->
+            if (session.existsInDatabase) return@withLoadedSession
+            // 重走一遍带加密门控的加载：已解锁才会拿到真正的正文，仍处于隐藏状态时返回 null，什么都不做
+            val loaded = loadConversation(conversationId) ?: return@withLoadedSession
+            session.replace(conversation = loaded, existsInDatabase = true) {
+                // 只是把内存换成数据库里的内容，数据库本身不需要改动
+            }
+        }
+    }
+
     fun getGenerationJobStateFlow(conversationId: Uuid): Flow<Job?> =
         sessionManager.getGenerationJobStateFlow(conversationId)
 

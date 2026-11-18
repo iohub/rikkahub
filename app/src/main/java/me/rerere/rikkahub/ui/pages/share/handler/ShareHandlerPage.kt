@@ -18,6 +18,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -28,6 +29,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.data.repository.AssistantLockManager
 import me.rerere.rikkahub.ui.context.LocalNavController
 import me.rerere.rikkahub.utils.base64Encode
 import me.rerere.rikkahub.utils.navigateToChatPage
@@ -41,6 +43,13 @@ fun ShareHandlerPage(text: String, image: String?) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val navController = LocalNavController.current
+
+    // 隐藏的加密助手不出现在分享目标里；unlockedIds 参与订阅，所以解锁后列表会立即恢复
+    val unlockedIds by AssistantLockManager.unlockedIds.collectAsStateWithLifecycle()
+    val visibleAssistants = remember(settings.assistants, unlockedIds) {
+        AssistantLockManager.filterHidden(settings.assistants)
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -80,7 +89,7 @@ fun ShareHandlerPage(text: String, image: String?) {
                 }
             }
 
-            items(settings.assistants) { assistant ->
+            items(visibleAssistants) { assistant ->
                 Surface(
                     onClick = {
                         scope.launch {
