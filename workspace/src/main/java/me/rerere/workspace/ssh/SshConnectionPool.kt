@@ -127,6 +127,44 @@ class SshConnectionPool(
         }
     }
 
+    /**
+     * 打开一个本地端口转发（等价 ssh -L）: 本地 [bindAddress]:[localPort] 收到的连接
+     * 经 SSH 通道转发到 [remoteHost]:[remotePort]。返回的句柄必须在用完后 close()。
+     *
+     * 转发打开期间一直占用这条连接 (和 [openShell] 一样 retain), 不会被空闲清理关掉。
+     * 本地端口绑定失败等错误直接抛出, 不影响连接池里的连接; channel 在每条连接建立时才打开,
+     * 打不开只影响那一条连接, 所以这里不需要重连重试。
+     */
+    fun openLocalForward(
+        id: String,
+        config: SshConnectionConfig,
+        bindAddress: String,
+        localPort: Int,
+        remoteHost: String,
+        remotePort: Int,
+    ): SshPortForward {
+        require(localPort in 0..65535) { "Local port must be in 0..65535: $localPort" }
+        require(remotePort in 1..65535) { "Remote port must be in 1..65535: $remotePort" }
+        require(remoteHost.isNotBlank()) { "Remote host is required" }
+        val pooled = acquire(id, config)
+        return try {
+            SshPortForward(
+                connection = pooled.connection,
+                bindAddress = bindAddress,
+                requestedPort = localPort,
+                remoteHost = remoteHost,
+                remotePort = remotePort,
+                channelTimeoutMillis = channelTimeoutMillis,
+                onClose = pooled::release,
+            )
+        } catch (e: Exception) {
+            // 端口被占用等本地错误不说明 SSH 连接有问题, 只有连接已经断开时才淘汰, 否则交给空闲清理
+            if (!pooled.connection.isConnected) evict(id, pooled)
+            pooled.release()
+            throw e
+        }
+    }
+
     /** 连接池里 [id] 是否有可用连接, 供测试观察空闲断开 */
     internal fun isConnected(id: String): Boolean = connections[id]?.connection?.isConnected == true
 

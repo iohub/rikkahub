@@ -52,6 +52,10 @@ internal class SshConnection private constructor(
     val isConnected: Boolean
         get() = session.isConnected
 
+    /** 仅供同模块内的端口转发等需要直接操作 JSch Session 的场景使用。 */
+    internal val rawSession: Session
+        get() = session
+
     // lazy 在初始化抛异常时不会缓存结果, 连接恢复后下次访问会重新获取
     val homeDir: String by lazy { sftp { it.home } }
 
