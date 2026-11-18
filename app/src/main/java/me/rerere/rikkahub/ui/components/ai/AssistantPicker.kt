@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Edit03
@@ -47,6 +48,7 @@ import me.rerere.rikkahub.R
 import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.model.Assistant
+import me.rerere.rikkahub.data.repository.AssistantLockManager
 import me.rerere.rikkahub.ui.components.ui.UIAvatar
 import me.rerere.rikkahub.ui.context.LocalNavController
 import me.rerere.rikkahub.ui.hooks.rememberAssistantState
@@ -122,12 +124,16 @@ private fun AssistantPickerSheet(
     // 标签过滤状态
     var selectedTagIds by remember { mutableStateOf(emptySet<Uuid>()) }
 
-    // 根据选中的标签过滤助手
-    val filteredAssistants = remember(settings.assistants, selectedTagIds) {
+    // 加密隐藏：锁定助手默认不可见，本会话解锁后立刻回到列表
+    val unlockedIds by AssistantLockManager.unlockedIds.collectAsStateWithLifecycle()
+
+    // 根据选中的标签过滤助手（先剔除当前应当隐藏的助手）
+    val filteredAssistants = remember(settings.assistants, selectedTagIds, unlockedIds) {
+        val visible = AssistantLockManager.filterHidden(settings.assistants)
         if (selectedTagIds.isEmpty()) {
-            settings.assistants
+            visible
         } else {
-            settings.assistants.filter { assistant ->
+            visible.filter { assistant ->
                 assistant.tags.any { tagId -> tagId in selectedTagIds }
             }
         }

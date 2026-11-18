@@ -56,6 +56,7 @@ import kotlinx.coroutines.launch
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.getCurrentAssistant
+import me.rerere.rikkahub.data.repository.AssistantLockManager
 import me.rerere.rikkahub.ui.components.ui.CardGroup
 import me.rerere.rikkahub.ui.hooks.writeStringPreference
 import me.rerere.rikkahub.ui.theme.RikkahubTheme
@@ -263,9 +264,13 @@ private fun AssistantPickerSheet(
     val sheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden, enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded))
     val scope = rememberCoroutineScope()
     var selectedTagIds by remember { mutableStateOf(emptySet<Uuid>()) }
-    val filteredAssistants = remember(settings.assistants, selectedTagIds) {
-        if (selectedTagIds.isEmpty()) settings.assistants
-        else settings.assistants.filter { it.tags.any { id -> id in selectedTagIds } }
+
+    // 加密隐藏：安全模式里同样不允许看到未解锁的加密助手
+    val unlockedIds by AssistantLockManager.unlockedIds.collectAsStateWithLifecycle()
+    val filteredAssistants = remember(settings.assistants, selectedTagIds, unlockedIds) {
+        val visible = AssistantLockManager.filterHidden(settings.assistants)
+        if (selectedTagIds.isEmpty()) visible
+        else visible.filter { it.tags.any { id -> id in selectedTagIds } }
     }
 
     ModalBottomSheet(

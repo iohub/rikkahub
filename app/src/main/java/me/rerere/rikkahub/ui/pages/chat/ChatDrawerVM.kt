@@ -29,6 +29,7 @@ import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.getCurrentAssistant
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.data.model.Folder
+import me.rerere.rikkahub.data.repository.AssistantLockManager
 import me.rerere.rikkahub.data.repository.ConversationRepository
 import me.rerere.rikkahub.data.repository.FolderRepository
 import me.rerere.rikkahub.data.repository.memoryId
@@ -74,11 +75,30 @@ class ChatDrawerVM(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
+    // 当前助手是否处于「加密隐藏」状态：已加密且本会话尚未解锁。
+    // AssistantLockManager.unlockedIds 是进程内 StateFlow，必须参与 combine —— 解锁后列表要立刻恢复。
+    private val currentAssistantHiddenFlow: Flow<Boolean> = combine(
+        settingsStore.settingsFlow,
+        AssistantLockManager.unlockedIds,
+    ) { settings, unlockedIds ->
+        val current = settings.assistants.find { it.id == settings.assistantId } ?: return@combine false
+        current.isLocked && current.id !in unlockedIds
+    }.distinctUntilChanged()
+
     val conversations: Flow<PagingData<ConversationListItem>> =
-        combine(assistantIdFlow, _selectedFolderId, sortOrderFlow) { assistantId, folderId, sortOrder ->
-            Triple(assistantId, folderId, sortOrder)
+        combine(
+            assistantIdFlow,
+            _selectedFolderId,
+            sortOrderFlow,
+            currentAssistantHiddenFlow,
+        ) { assistantId, folderId, sortOrder, hidden ->
+            ConversationQuery(assistantId, folderId, sortOrder, hidden)
         }
-            .flatMapLatest { (assistantId, folderId, sortOrder) ->
+            .flatMapLatest { (assistantId, folderId, sortOrder, hidden) ->
+                // 隐藏助手的会话整体不提供分页数据：不能在 PagingData.map 里删条目（会让 itemCount 失真）
+                if (hidden) {
+                    return@flatMapLatest flowOf(PagingData.empty<ConversationListItem>())
+                }
                 val paging = if (folderId == null) {
                     conversationRepo.getUnfiledConversationsOfAssistantPaging(assistantId, sortOrder)
                 } else {
@@ -197,3 +217,11 @@ class ChatDrawerVM(
         }
     }
 }
+
+/** 抽屉会话列表的查询参数：[hidden] 为真时整体返回空分页（当前助手已被加密隐藏）。 */
+private data class ConversationQuery(
+    val assistantId: Uuid,
+    val folderId: Uuid?,
+    val sortOrder: ConversationSortOrder,
+    val hidden: Boolean,
+)

@@ -593,6 +593,8 @@ private fun AssistantItem(
                             ItemAction(
                                 text = lockLabel,
                                 icon = HugeIcons.LockKey,
+                                // 至少要留一个未加密助手：否则当前助手指向隐藏助手时会话内容仍会被看到
+                                enabled = settings.assistants.count { !it.isLocked } > 1,
                                 onClick = onLock,
                             )
                         )

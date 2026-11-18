@@ -105,6 +105,8 @@ class AssistantVM(
                 // 按最新列表取一次，避免用到调用方传入的过期副本
                 val target = settings.assistants.find { it.id == assistant.id }
                     ?: return@update settings
+                // 边界保护：不允许把所有助手都加密，否则当前助手指向隐藏助手会泄漏会话内容
+                if (settings.assistants.count { !it.isLocked } <= 1) return@update settings
                 val locked = target.copy(
                     isLocked = true,
                     lockPasswordHash = AssistantLockManager.hashPassword(target.id, password),

@@ -81,6 +81,7 @@ import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.data.model.Folder
+import me.rerere.rikkahub.data.repository.AssistantLockManager
 import me.rerere.rikkahub.data.repository.ConversationRepository
 import me.rerere.rikkahub.ui.components.ai.AssistantPicker
 import me.rerere.rikkahub.ui.components.ui.BackupReminderCard
@@ -358,7 +359,11 @@ fun ChatDrawerContent(
                     val updateJob = vm.updateSettings { it.copy(assistantId = assistant.id) }
                     scope.launch {
                         updateJob.join()
-                        val id = if (context.readBooleanPreference("create_new_conversation_on_start", true)) {
+                        // 防御：隐藏助手（已加密且未解锁）不参与「复用最近会话」，直接进新会话
+                        val reuseRecentConversation =
+                            !context.readBooleanPreference("create_new_conversation_on_start", true) &&
+                                !AssistantLockManager.isHidden(assistant)
+                        val id = if (!reuseRecentConversation) {
                             Uuid.random()
                         } else {
                             repo.getConversationsOfAssistant(assistant.id)
