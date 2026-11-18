@@ -56,6 +56,25 @@ import kotlin.uuid.Uuid
 
 private const val TAG = "ChatRequestFactory"
 
+/** logcat 单条日志约 4000 字符上限，长文本按这个长度切块输出 */
+private const val LOG_CHUNK_SIZE = 3000
+
+/** 分块输出长文本，避免 logcat 单条日志被截断 */
+private fun logLongText(label: String, text: String) {
+    Log.d(TAG, "===== $label (${text.length} chars) =====")
+    if (text.isEmpty()) {
+        Log.d(TAG, "<empty>")
+    } else {
+        var index = 0
+        while (index < text.length) {
+            val end = minOf(index + LOG_CHUNK_SIZE, text.length)
+            Log.d(TAG, text.substring(index, end))
+            index = end
+        }
+    }
+    Log.d(TAG, "===== end of $label =====")
+}
+
 /**
  * 一轮对话的请求上下文，按会话固定的配置解析一次。
  *
@@ -234,6 +253,23 @@ class ChatRequestFactory(
         processingStatus: MutableStateFlow<String?> = MutableStateFlow(null),
     ): StepRequest {
         val assistant = turn.assistant
+        // 开关状态摘要：打印的是 disableAll 与各子项合并后的结果，一眼看出哪些注入被关掉了
+        val override = assistant.promptInjectionOverride
+        Log.d(
+            TAG,
+            "promptInjectionOverride[conv=${turn.conversationId}]: " +
+                "disableAll=${override.disableAll}, " +
+                "memory=${override.isMemoryDisabled}, " +
+                "toolPrompts=${override.isToolPromptsDisabled}, " +
+                "modeInjections=${override.isModeInjectionsDisabled}, " +
+                "workspace=${override.isWorkspaceDisabled}, " +
+                "timeReminder=${override.isTimeReminderDisabled}, " +
+                "documentAsPrompt=${override.isDocumentAsPromptDisabled}, " +
+                "ocr=${override.isOcrDisabled}, " +
+                "placeholders=${override.isPlaceholdersDisabled}"
+        )
+        // 把拼装态的 system 带出 buildList 作用域，供转换前的日志使用
+        var assembledSystem = ""
         val requestMessages = buildList {
             val system = buildString {
                 val effectiveSystemPrompt =
@@ -259,6 +295,7 @@ class ChatRequestFactory(
                     }
                 }
             }
+            assembledSystem = system
             if (system.isNotBlank()) {
                 add(UIMessage.system(prompt = system).copy(isSynthetic = true))
             }
@@ -272,6 +309,19 @@ class ChatRequestFactory(
             processingStatus = processingStatus,
             workspaceCwd = turn.workspaceCwd,
         ).expandNotices()
+        // 转换前的 system：用户 systemPrompt + 记忆 + 工具 prompt 三段，验证记忆/工具两个开关最直接
+        logLongText("system prompt (assembled, before transformers)[conv=${turn.conversationId}]", assembledSystem)
+        // 转换后的终态 system：模式注入/世界书/占位符替换/workspace 等改动后的真实内容
+        val finalSystem = requestMessages
+            .filter { it.role == MessageRole.SYSTEM }
+            .joinToString(separator = "\n\n") { it.toText() }
+        logLongText("system prompt (final, after transformers)[conv=${turn.conversationId}]", finalSystem)
+        // 工具定义不在 system 里，但同为模型可见指令：补一行名字摘要便于判断工具是否还在
+        Log.d(
+            TAG,
+            "request tools[conv=${turn.conversationId}]: count=${turn.tools.size}, " +
+                "names=${turn.tools.joinToString(",") { it.name }}"
+        )
         val params = TextGenerationParams(
             model = turn.model,
             temperature = assistant.temperature,
