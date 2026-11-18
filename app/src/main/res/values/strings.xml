@@ -470,9 +470,10 @@
   <string name="ssh_tunnel_host_key_unconfirmed">Not trusted</string>
   <string name="ssh_tunnel_host_key_test">Test connection and trust fingerprint</string>
   <string name="ssh_tunnel_import_title">Fill from ssh command</string>
-  <string name="ssh_tunnel_import_placeholder">ssh -L 6008:localhost:6008 -p 15061 root@example.com</string>
+  <string name="ssh_tunnel_import_placeholder">ssh -p 15061 root@example.com\nssh -L 6008:localhost:6008 -p 15061 root@example.com</string>
   <string name="ssh_tunnel_import_action">Parse</string>
   <string name="ssh_tunnel_import_failed">This does not look like an ssh command</string>
+  <string name="ssh_tunnel_import_clipboard_hint">Detected an ssh command in the clipboard</string>
   <string name="ssh_tunnel_section_connection">Connection</string>
   <string name="ssh_tunnel_section_forward">Port forwarding</string>
   <string name="ssh_tunnel_section_auth">Authentication</string>

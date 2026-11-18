@@ -1,6 +1,7 @@
 package me.rerere.rikkahub.utils
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -20,6 +21,7 @@ class SshCommandParserTest {
         assertEquals(6008, parsed.localPort)
         assertEquals("localhost", parsed.remoteHost)
         assertEquals(6008, parsed.remotePort)
+        assertTrue(parsed.hasForward)
         assertNull(parsed.identityFile)
         assertTrue(parsed.warnings.isEmpty())
     }
@@ -106,16 +108,47 @@ class SshCommandParserTest {
     }
 
     @Test
-    fun `missing forward or host is reported through warnings`() {
+    fun `missing forward is fine but missing host is reported`() {
+        // 纯登录命令 (没有 -L) 是合法输入, 不应该再因为缺 -L 产生告警
         val noForward = parseSshCommand("ssh root@host")!!
         assertNull(noForward.localPort)
         assertNull(noForward.remotePort)
-        assertTrue(noForward.warnings.any { it.contains("-L") })
+        assertFalse(noForward.hasForward)
+        assertTrue(noForward.warnings.isEmpty())
 
+        // 没有目标主机才是真正的错误
         val noHost = parseSshCommand("ssh -L 6008:localhost:6008")!!
         assertEquals(6008, noHost.localPort)
         assertEquals("", noHost.host)
         assertTrue(noHost.warnings.isNotEmpty())
+        assertTrue(noHost.warnings.any { it.contains("主机") })
+    }
+
+    @Test
+    fun `pure login command fills connection fields without warnings`() {
+        val parsed = parseSshCommand("ssh -p 36724 root@region-42.seetacloud.com")
+
+        assertNotNull(parsed)
+        parsed!!
+        assertEquals("region-42.seetacloud.com", parsed.host)
+        assertEquals(36724, parsed.port)
+        assertEquals("root", parsed.username)
+        assertFalse(parsed.hasForward)
+        // 没有 -L 就不要臆造转发配置
+        assertNull(parsed.localPort)
+        assertNull(parsed.remotePort)
+        assertEquals("", parsed.remoteHost)
+        assertTrue(parsed.warnings.isEmpty())
+    }
+
+    @Test
+    fun `forward command is flagged as tunnel while plain login is not`() {
+        val tunnel = parseSshCommand("ssh -L 8080:localhost:80 root@host")!!
+        assertTrue(tunnel.hasForward)
+
+        val login = parseSshCommand("ssh -p 2222 root@host")!!
+        assertFalse(login.hasForward)
+        assertTrue(login.warnings.isEmpty())
     }
 
     @Test

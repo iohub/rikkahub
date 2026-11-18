@@ -469,9 +469,10 @@
   <string name="ssh_tunnel_host_key_unconfirmed">未信任</string>
   <string name="ssh_tunnel_host_key_test">测试连接并信任指纹</string>
   <string name="ssh_tunnel_import_title">从 ssh 命令填充</string>
-  <string name="ssh_tunnel_import_placeholder">ssh -L 6008:localhost:6008 -p 15061 root@example.com</string>
+  <string name="ssh_tunnel_import_placeholder">ssh -p 15061 root@example.com\nssh -L 6008:localhost:6008 -p 15061 root@example.com</string>
   <string name="ssh_tunnel_import_action">解析</string>
   <string name="ssh_tunnel_import_failed">无法识别这条 ssh 命令</string>
+  <string name="ssh_tunnel_import_clipboard_hint">已从剪贴板识别 ssh 命令</string>
   <string name="ssh_tunnel_section_connection">连接信息</string>
   <string name="ssh_tunnel_section_forward">端口转发</string>
   <string name="ssh_tunnel_section_auth">认证方式</string>

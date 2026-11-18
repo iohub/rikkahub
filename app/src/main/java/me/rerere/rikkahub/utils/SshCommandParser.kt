@@ -1,7 +1,10 @@
 package me.rerere.rikkahub.utils
 
 /**
- * 从用户粘贴的 `ssh -L` 命令里解析出的隧道参数, 供编辑页的“从命令填充”使用。
+ * 从用户粘贴的 ssh 命令里解析出的连接参数, 供编辑页的“从命令填充”使用。
+ *
+ * 支持两种形态: 纯登录命令 (`ssh -p 22 root@host`) 和带本地转发的隧道命令
+ * (`ssh -L 6008:localhost:6008 -p 22 root@host`), 后者用 [hasForward] 区分。
  *
  * 只做纯文本解析, 不依赖 Android 也不需要网络, 方便在 JVM 单测里覆盖。
  * 解析不出来的字段保持默认值, 由界面提示用户补齐。
@@ -10,13 +13,16 @@ data class ParsedSshTunnel(
     val host: String = "",
     val port: Int = DEFAULT_SSH_PORT,
     val username: String = "",
-    /** 本地监听地址, 命令里没写 `bind_address` 时就是 127.0.0.1 */
+    /** 本地监听地址, 命令里没写 `bind_address` 时就是 127.0.0.1; 没有 `-L` 时为空串 */
     val bindAddress: String = DEFAULT_LOOPBACK,
     /** `-L` 里的本地端口, 没写或写错时为 null */
     val localPort: Int? = null,
+    /** `-L` 里的目标主机; 没有 `-L` 时为空串 */
     val remoteHost: String = DEFAULT_LOOPBACK,
     /** `-L` 里的目标端口, 没写或写错时为 null */
     val remotePort: Int? = null,
+    /** 命令里是否带了 `-L` 本地端口转发; 纯登录命令 (如 `ssh -p 22 root@host`) 为 false */
+    val hasForward: Boolean = false,
     /** `-i` 指定的私钥路径, 只用来提示用户手动粘贴私钥内容 (Android 读不到这个路径) */
     val identityFile: String? = null,
     /** 解析过程中的提示, 界面直接就地展示 */
@@ -43,7 +49,8 @@ private val VALUE_OPTIONS = setOf(
  * [ParsedSshTunnel.warnings]。
  *
  * 返回 null 表示这压根不是一条能解析的 ssh 命令 (空串、不是 ssh 开头、引号没闭合);
- * 能认出是 ssh 命令但缺 `-L` / 缺目标主机时仍返回结果, 由界面提示用户补。
+ * 能认出是 ssh 命令但没有 `-L` 时仍返回结果 ([ParsedSshTunnel.hasForward] 为 false),
+ * 纯登录命令属于合法输入不会产生警告; 缺目标主机时返回结果并写入 warnings。
  */
 fun parseSshCommand(raw: String): ParsedSshTunnel? {
     var tokens = tokenize(raw) ?: return null
@@ -131,17 +138,20 @@ fun parseSshCommand(raw: String): ParsedSshTunnel? {
         }
     }
 
-    if (!forwardSeen) warnings += "没有找到 `-L` 本地转发参数"
+    // 没有 -L 不代表命令有问题: `ssh -p 22 root@host` 这种纯登录命令同样是合法输入.
+    // 只有真的写了 -L 却解析失败时才有警告, 那些由 parseForwardSpec/上面的分支就地写入.
     if (host.isBlank()) warnings += "没有找到目标主机 (形如 user@host)"
 
     return ParsedSshTunnel(
         host = host,
         port = optionPort ?: urlPort ?: DEFAULT_SSH_PORT,
         username = username,
-        bindAddress = bindAddress,
+        // 纯登录命令没有转发, 监听地址/目标主机保持为空, 不要臆造 127.0.0.1 之类的默认目标
+        bindAddress = if (forwardSeen) bindAddress else "",
         localPort = localPort,
-        remoteHost = remoteHost,
+        remoteHost = if (forwardSeen) remoteHost else "",
         remotePort = remotePort,
+        hasForward = forwardSeen,
         identityFile = identityFile,
         warnings = warnings,
     )

@@ -28,10 +28,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -45,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.rerere.hugeicons.HugeIcons
@@ -70,9 +73,11 @@ import me.rerere.rikkahub.ui.context.LocalNavController
 import me.rerere.rikkahub.ui.context.LocalSettings
 import me.rerere.rikkahub.ui.context.LocalToaster
 import me.rerere.rikkahub.ui.theme.CustomColors
+import me.rerere.rikkahub.utils.ParsedSshTunnel
 import me.rerere.rikkahub.utils.SecretCipher
 import me.rerere.rikkahub.utils.parseSshCommand
 import me.rerere.rikkahub.utils.plus
+import me.rerere.rikkahub.utils.readClipboardText
 import me.rerere.ui.toast.ToastType
 import me.rerere.workspace.ssh.SshAuthType
 import me.rerere.workspace.ssh.SshConnectionPool
@@ -137,6 +142,10 @@ fun SettingSshTunnelDetailPage(tunnelId: String) {
 
     var commandInput by remember(tunnelId) { mutableStateOf("") }
     var commandWarnings by remember(tunnelId) { mutableStateOf(emptyList<String>()) }
+    // 剪贴板里识别到 ssh 命令的轻提示: 单独放, 不能塞进 commandWarnings, 否则会被自动解析结果覆盖
+    var clipboardCommandDetected by remember(tunnelId) { mutableStateOf(false) }
+    // 读剪贴板只做一次; 用 saveable 保证转屏后不会重复读取
+    var clipboardChecked by rememberSaveable(tunnelId) { mutableStateOf(false) }
     var testing by remember { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
     var deleteConfirmVisible by remember { mutableStateOf(false) }
@@ -179,20 +188,59 @@ fun SettingSshTunnelDetailPage(tunnelId: String) {
         )
     }
 
+    /**
+     * 把解析结果写进表单。
+     *
+     * 只覆盖命令里确实出现的字段: 纯登录命令 (`ssh -p 22 root@host`) 不带 `-L`,
+     * 此时绝不动转发相关字段, 免得把用户已经填好的转发配置清空。
+     */
+    fun fillFromParsed(parsed: ParsedSshTunnel) {
+        if (parsed.host.isNotBlank()) host = parsed.host
+        if (parsed.username.isNotBlank()) username = parsed.username
+        if (parsed.port in 1..65535) portText = parsed.port.toString()
+        if (parsed.hasForward) {
+            if (parsed.bindAddress.isNotBlank()) bindAddress = parsed.bindAddress
+            parsed.localPort?.let { localPortText = it.toString() }
+            if (parsed.remoteHost.isNotBlank()) remoteHost = parsed.remoteHost
+            parsed.remotePort?.let { remotePortText = it.toString() }
+        }
+        commandWarnings = parsed.warnings
+    }
+
     fun applyCommand() {
         val parsed = parseSshCommand(commandInput)
         if (parsed == null) {
             commandWarnings = listOf(context.getString(R.string.ssh_tunnel_import_failed))
             return
         }
-        if (parsed.host.isNotBlank()) host = parsed.host
-        if (parsed.username.isNotBlank()) username = parsed.username
-        if (parsed.port in 1..65535) portText = parsed.port.toString()
-        if (parsed.bindAddress.isNotBlank()) bindAddress = parsed.bindAddress
-        parsed.localPort?.let { localPortText = it.toString() }
-        if (parsed.remoteHost.isNotBlank()) remoteHost = parsed.remoteHost
-        parsed.remotePort?.let { remotePortText = it.toString() }
-        commandWarnings = parsed.warnings
+        fillFromParsed(parsed)
+    }
+
+    // 命令变化后自动解析填充: delay 让连续输入只在停手 300ms 后解析一次 (新值会让上一次 effect 直接取消)
+    LaunchedEffect(commandInput) {
+        if (commandInput.isBlank()) {
+            // 清空命令时一并清掉旧提示, 但不动已经填好的表单字段
+            commandWarnings = emptyList()
+            return@LaunchedEffect
+        }
+        delay(300)
+        // 还没输入到目标主机 (比如刚敲了 "ssh -p 22") 时静默跳过, 免得边打字边报错
+        val parsed = parseSshCommand(commandInput)
+            ?.takeIf { it.host.isNotBlank() }
+            ?: return@LaunchedEffect
+        fillFromParsed(parsed)
+    }
+
+    // 新建隧道时读一次剪贴板: 里面正好是 ssh 命令就带进命令框, 由上面的自动解析完成字段填充
+    LaunchedEffect(tunnelId) {
+        if (clipboardChecked) return@LaunchedEffect
+        clipboardChecked = true
+        if (isEditing || commandInput.isNotBlank()) return@LaunchedEffect
+        val clip = runCatching { context.readClipboardText() }.getOrDefault("").trim()
+        if (clip.isBlank()) return@LaunchedEffect
+        val parsed = parseSshCommand(clip)?.takeIf { it.host.isNotBlank() } ?: return@LaunchedEffect
+        commandInput = clip
+        clipboardCommandDetected = true
     }
 
     fun testConnection() {
@@ -420,9 +468,18 @@ fun SettingSshTunnelDetailPage(tunnelId: String) {
                     formItem {
                         OutlinedTextField(
                             value = commandInput,
-                            onValueChange = { commandInput = it },
+                            onValueChange = {
+                                commandInput = it
+                                // 用户自己动过命令框, 就不再提示"已从剪贴板识别"
+                                clipboardCommandDetected = false
+                            },
                             modifier = Modifier.fillMaxWidth(),
                             placeholder = { Text(stringResource(R.string.ssh_tunnel_import_placeholder)) },
+                            supportingText = if (clipboardCommandDetected) {
+                                { Text(stringResource(R.string.ssh_tunnel_import_clipboard_hint)) }
+                            } else {
+                                null
+                            },
                             textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                             minLines = 2,
                             maxLines = 4,
