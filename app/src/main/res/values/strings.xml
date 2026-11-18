@@ -925,6 +925,8 @@
   <string name="setting_page_preferences_network_request_timeout_disabled">Disabled</string>
   <string name="setting_page_preferences_network_request_timeout_seconds">%1$d s</string>
   <string name="setting_page_preferences_network_request_timeout_input_hint">Seconds, 0 disables the timeout</string>
+  <string name="setting_page_preferences_network_auto_reconnect_ssh">Reconnect SSH tunnel</string>
+  <string name="setting_page_preferences_network_auto_reconnect_ssh_desc">When the model is proxied through an SSH tunnel, rebuild the tunnel before retrying a request that timed out or was disconnected.</string>
   <string name="setting_page_documentation">Documentation</string>
   <string name="setting_page_documentation_desc">View app usage instructions and help documentation</string>
   <string name="setting_page_donate">Donate</string>

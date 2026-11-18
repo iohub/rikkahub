@@ -126,7 +126,12 @@ internal class AgentLoop(
         // 本步从清空的统计开始（merge 只适合同一次请求内的快照），再与之前的步骤累加。
         val stepStart = base.copy(usage = null, generationTimeMs = null)
         return try {
-            withRetry(request.retry, onRetry = { events.emit(AgentEvent.Retrying(it)) }) {
+            withRetry(
+                policy = request.retry,
+                onRetry = { events.emit(AgentEvent.Retrying(it)) },
+                // 每次尝试（含第一次）前都可以做外部准备，例如重建被代理的隧道
+                beforeAttempt = { attempt -> request.beforeAttempt?.invoke(attempt) },
+            ) {
                 // 每次重试都从本步开始时的消息重新合并，不会把重试的响应接在已经展示的半截回复后面；
                 // 各次尝试共用同一个消息 id，调用方直接覆盖即可。
                 val handler = StreamChunkHandler(params.model)
@@ -161,7 +166,11 @@ internal class AgentLoop(
     ): UIMessage {
         // 非流式拿不到首 token 时间，只能统计最后一次尝试的整个请求耗时
         var requestMark = TimeSource.Monotonic.markNow()
-        val result = withRetry(request.retry, onRetry = { events.emit(AgentEvent.Retrying(it)) }) {
+        val result = withRetry(
+            policy = request.retry,
+            onRetry = { events.emit(AgentEvent.Retrying(it)) },
+            beforeAttempt = { attempt -> request.beforeAttempt?.invoke(attempt) },
+        ) {
             requestMark = TimeSource.Monotonic.markNow()
             withRequestTimeout { request.provider.generateText(request.providerSetting, messages, params) }
         }

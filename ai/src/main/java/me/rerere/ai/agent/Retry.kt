@@ -36,14 +36,24 @@ data class RetryAttempt(
 
 /**
  * 按 [policy] 执行 [block]：失败且允许重试时先调用 [onRetry]，等待后再执行一次。
+ *
+ * [beforeAttempt] 在每次尝试发起之前调用，包括第一次：第一次拿到 null，之后每次拿到上一次失败的
+ * [RetryAttempt]，可以在重新提交请求前做外部准备（例如重建代理隧道）。
+ *
+ * [beforeAttempt] 在 `try` 之外调用，它抛出的异常不会被当成一次请求失败而消耗重试次数；
+ * 协程取消（[CancellationException]）照常向上抛出，不会重试。
  */
 suspend fun <T> withRetry(
     policy: RetryPolicy,
     onRetry: suspend (RetryAttempt) -> Unit = {},
+    beforeAttempt: suspend (RetryAttempt?) -> Unit = {},
     block: suspend () -> T,
 ): T {
     var retries = 0
+    var lastAttempt: RetryAttempt? = null
     while (true) {
+        // 在 try 之前：钩子自身失败不应该被计成一次请求失败，也不该触发重试
+        beforeAttempt(lastAttempt)
         try {
             return block()
         } catch (error: Throwable) {
@@ -55,7 +65,9 @@ suspend fun <T> withRetry(
             }
             retries++
             val backoff = policy.initialDelay * (1 shl (retries - 1))
-            onRetry(RetryAttempt(error, retries, policy.maxRetries, backoff))
+            val attempt = RetryAttempt(error, retries, policy.maxRetries, backoff)
+            lastAttempt = attempt
+            onRetry(attempt)
             delay(backoff)
         }
     }

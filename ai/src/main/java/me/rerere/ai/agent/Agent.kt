@@ -31,6 +31,13 @@ data class AgentRequest(
      * 计时在每次重试尝试开始时重新开始；超时后这次请求被终止，并按 [retry] 重新提交。
      */
     val requestTimeout: Duration? = null,
+    /**
+     * 每次尝试发起请求前调用：第一次传 null，之后每次传上一次失败的 [RetryAttempt]。
+     *
+     * 用于在重新提交请求前做外部准备，例如重建被代理的隧道。它抛出的异常不会被当成一次请求失败
+     * （不消耗重试次数），而是直接结束这次运行；因此实现里不要抛异常，也不要吞掉 [CancellationException]。
+     */
+    val beforeAttempt: (suspend (RetryAttempt?) -> Unit)? = null,
 )
 
 /** 调用方在循环各个节点上的介入点 */

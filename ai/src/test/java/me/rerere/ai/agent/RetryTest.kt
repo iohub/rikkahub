@@ -79,4 +79,69 @@ class RetryTest {
         assertTrue(job.isCancelled)
         assertEquals(1, calls)
     }
+
+    @Test
+    fun `before attempt runs once per attempt with the previous failure`() = runTest {
+        var calls = 0
+        val seen = mutableListOf<RetryAttempt?>()
+
+        val result = withRetry(RetryPolicy.NETWORK, beforeAttempt = { seen += it }) {
+            calls++
+            if (calls < 3) throw IOException("timeout")
+            "ok"
+        }
+
+        assertEquals("ok", result)
+        assertEquals(3, calls)
+        // 第一次没有失败信息，之后每次拿到上一次失败
+        assertEquals(3, seen.size)
+        assertEquals(listOf<Int?>(null, 1, 2), seen.map { it?.retry })
+        assertEquals(listOf(Duration.ZERO, 1.seconds, 2.seconds), seen.map { it?.delay ?: Duration.ZERO })
+        assertTrue(seen.drop(1).all { it?.cause is IOException })
+    }
+
+    @Test
+    fun `before attempt failure is not treated as a request failure`() = runTest {
+        var calls = 0
+        var hookCalls = 0
+        var retryCalls = 0
+
+        val error = runCatching {
+            withRetry(
+                policy = RetryPolicy.NETWORK,
+                onRetry = { retryCalls++ },
+                beforeAttempt = {
+                    hookCalls++
+                    throw IOException("tunnel down")
+                },
+            ) {
+                calls++
+                "ok"
+            }
+        }.exceptionOrNull()
+
+        assertTrue(error is IOException)
+        // 钩子在 try 之外：抛异常直接结束，不消耗重试次数，也不会被当成请求失败重试
+        assertEquals(1, hookCalls)
+        assertEquals(0, calls)
+        assertEquals(0, retryCalls)
+    }
+
+    @Test
+    fun `hook runs right before each attempt`() = runTest {
+        val events = mutableListOf<String>()
+        var calls = 0
+
+        withRetry(
+            policy = RetryPolicy(maxRetries = 1, initialDelay = Duration.ZERO),
+            onRetry = { events += "retry" },
+            beforeAttempt = { events += "before" },
+        ) {
+            calls++
+            events += "block"
+            if (calls == 1) throw IOException("boom")
+        }
+
+        assertEquals(listOf("before", "block", "retry", "before", "block"), events)
+    }
 }

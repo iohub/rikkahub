@@ -11,6 +11,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import me.rerere.rikkahub.AppScope
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.model.SshTunnelSetting
@@ -26,6 +27,9 @@ import java.net.BindException
 import java.util.concurrent.ConcurrentHashMap
 
 private const val TAG = "SshTunnelManager"
+
+/** 重连一条隧道最多等这么久：请求重试前调用, 不能让一次卡住的建连无限期拖住生成 */
+private const val ENSURE_TIMEOUT_MS = 30_000L
 
 /**
  * SSH 本地端口转发的运行时: 按 [SshTunnelSetting] 里的配置打开转发, 并把运行状态暴露成 [states]。
@@ -69,6 +73,21 @@ class SshTunnelManager(
     /** key 是 [SshTunnelSetting.id] */
     val states: StateFlow<Map<String, TunnelState>> = _states.asStateFlow()
 
+    /**
+     * 各隧道当前实际监听的本地端口（id -> 端口），未知或未运行时不出现在结果里。
+     *
+     * 句柄上的端口优先：随机分配端口时 [SshTunnelSetting.localPort] 是 0，只有这里能拿到真实端口，
+     * 重建和「这次请求是不是走这条隧道」的匹配都要用它。
+     */
+    fun localPorts(): Map<String, Int> = buildMap {
+        _states.value.forEach { (id, state) ->
+            state.localPort.takeIf { it > 0 }?.let { put(id, it) }
+        }
+        forwards.forEach { (id, forward) ->
+            forward.localPort.takeIf { it > 0 }?.let { put(id, it) }
+        }
+    }
+
     // shutdown 之后才建好的连接要立刻关掉, 否则服务已经停了转发还留着
     @Volatile
     private var shutDown = false
@@ -87,6 +106,57 @@ class SshTunnelManager(
                 closeHandle(id)
                 openLocked(id)
             }
+        }
+    }
+
+    /**
+     * 确保一条隧道可用：已经在跑且底层会话健康时直接返回，否则重建一次并等建连结束。
+     *
+     * 与 [restart] 的区别：restart 是 fire-and-forget，这里能 await 结果，供请求重试前使用。
+     * 用户主动关掉的隧道（`enabled == false`）不会被拉起，[shutDown] 之后也不重连：
+     * 自动重连只能修「本该在跑却断了」的隧道，不能违背用户的意愿复活一条隧道。
+     *
+     * 重建会尽量复用原来的本地端口：随机分配端口（[SshTunnelSetting.localPort] 为 0）时重建后端口会变，
+     * 用户填的 `127.0.0.1:<port>` 代理地址就失效了。
+     *
+     * @return 结束时这条隧道是否处于 [Phase.RUNNING]
+     */
+    suspend fun ensureRunning(id: String): Boolean {
+        if (shutDown) {
+            Log.i(TAG, "Skip reconnecting tunnel $id: manager is shut down")
+            return false
+        }
+        // 建连本身有超时, 但等同一 id 上正在进行的操作可能更久: 请求重试不该被无限期拖住
+        return withTimeoutOrNull(ENSURE_TIMEOUT_MS) {
+            lockOf(id).withLock {
+                val tunnel = settingsStore.awaitLoaded().sshTunnels.find { it.id == id }
+                if (tunnel == null || !tunnel.enabled) {
+                    Log.i(TAG, "Skip reconnecting tunnel $id: not configured or disabled by user")
+                    return@withLock false
+                }
+                val current = forwards[id]
+                if (current != null && current.isHealthy && _states.value[id]?.phase == Phase.RUNNING) {
+                    Log.i(TAG, "Tunnel $id is still healthy on port ${current.localPort}")
+                    return@withLock true
+                }
+                // 关句柄之前记下正在用的端口, 重建时复用它而不是重新随机分配
+                val previousPort = (forwards[id]?.localPort ?: _states.value[id]?.localPort)
+                    ?.takeIf { it in 1..65535 }
+                Log.i(TAG, "Reconnecting tunnel $id (previous port: ${previousPort ?: "unknown"})")
+                closeHandle(id)
+                openLocked(id, requestedPortOverride = previousPort)
+                if (_states.value[id]?.phase == Phase.RUNNING) return@withLock true
+                // 原端口已被别的进程占用时退回配置端口再试一次, 这一次端口可能会变
+                if (previousPort != null && previousPort != tunnel.localPort) {
+                    Log.w(TAG, "Reconnect tunnel $id on port $previousPort failed, retrying with configured port")
+                    openLocked(id)
+                    return@withLock _states.value[id]?.phase == Phase.RUNNING
+                }
+                false
+            }
+        } ?: run {
+            Log.w(TAG, "Reconnecting tunnel $id timed out after ${ENSURE_TIMEOUT_MS}ms")
+            false
         }
     }
 
@@ -158,8 +228,13 @@ class SshTunnelManager(
         lockOf(id).withLock { openLocked(id) }
     }
 
-    /** 打开一条转发, 调用方必须持有 [id] 的锁 */
-    private suspend fun openLocked(id: String) {
+    /**
+     * 打开一条转发, 调用方必须持有 [id] 的锁。
+     *
+     * [requestedPortOverride] 不为 null 时用它代替 [SshTunnelSetting.localPort] 作为本地监听端口，
+     * 供重建时复用原来实际使用的端口（配置里选了随机端口时尤其重要）。
+     */
+    private suspend fun openLocked(id: String, requestedPortOverride: Int? = null) {
         if (shutDown) {
             Log.i(TAG, "Skip starting tunnel $id: manager is shut down")
             return
@@ -195,7 +270,7 @@ class SshTunnelManager(
                     id = id,
                     config = config,
                     bindAddress = tunnel.bindAddress.ifBlank { SshTunnelSetting.LOOPBACK },
-                    localPort = tunnel.localPort,
+                    localPort = requestedPortOverride ?: tunnel.localPort,
                     remoteHost = tunnel.remoteHost,
                     remotePort = tunnel.remotePort,
                 )

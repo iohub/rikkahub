@@ -361,6 +361,24 @@ fun SettingPreferencesNetworkPage(vm: SettingVM = koinViewModel()) {
                             Text(stringResource(R.string.setting_page_preferences_network_auto_retry))
                         },
                     )
+                    switchItem(
+                        checked = settings.networkSetting.autoReconnectSshTunnel,
+                        onCheckedChange = { enabled ->
+                            vm.updateSettings {
+                                it.copy(
+                                    networkSetting = it.networkSetting.copy(
+                                        autoReconnectSshTunnel = enabled,
+                                    ),
+                                )
+                            }
+                        },
+                        supportingContent = {
+                            Text(stringResource(R.string.setting_page_preferences_network_auto_reconnect_ssh_desc))
+                        },
+                        headlineContent = {
+                            Text(stringResource(R.string.setting_page_preferences_network_auto_reconnect_ssh))
+                        },
+                    )
                     item(
                         onClick = {
                             timeoutSecondsDraft = timeoutSeconds.toString()

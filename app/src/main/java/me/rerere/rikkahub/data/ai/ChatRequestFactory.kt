@@ -2,12 +2,14 @@ package me.rerere.rikkahub.data.ai
 
 import android.content.Context
 import android.util.Log
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import me.rerere.ai.agent.AgentHooks
 import me.rerere.ai.agent.AgentRequest
+import me.rerere.ai.agent.RetryAttempt
 import me.rerere.ai.agent.RetryPolicy
 import me.rerere.ai.agent.StepRequest
 import me.rerere.ai.agent.expandNotices
@@ -102,6 +104,7 @@ class ChatRequestFactory(
     private val usageRecorder: UsageRecorder,
     private val chatToolFactory: ChatToolFactory,
     private val memoryRepository: MemoryRepository,
+    private val sshProxyTunnelResolver: SshProxyTunnelResolver,
     templateTransformer: TemplateTransformer,
     workspaceRepository: WorkspaceRepository,
 ) {
@@ -175,6 +178,8 @@ class ChatRequestFactory(
             retry = turn.settings.retryPolicy(),
             requestTimeout = turn.settings.networkSetting.requestTimeoutSeconds
                 .takeIf { it > 0 }?.seconds,
+            // 上一次尝试因超时/断连失败时，先重建被代理的隧道再重新提交
+            beforeAttempt = { attempt -> reconnectTunnelBeforeRetry(turn, attempt) },
         )
         val hooks = object : AgentHooks {
             override suspend fun prepareStep(messages: List<UIMessage>): StepRequest {
@@ -199,6 +204,34 @@ class ChatRequestFactory(
             override suspend fun shouldPause(message: UIMessage) = pauseAfterTools(message)
         }
         return request to hooks
+    }
+
+    /**
+     * 每次尝试发起请求之前的准备：上一次是超时或断连，且这次请求经 SSH 隧道代理时，先重建那条隧道。
+     *
+     * 隧道会话断开后本地端口照样 accept，请求会一直失败到重试次数用尽，重建隧道才能真的恢复。
+     * 这里**绝不能抛异常**：它不在 [withRetry] 的请求失败处理里，抛出去会直接结束整轮生成。
+     */
+    private suspend fun reconnectTunnelBeforeRetry(turn: ChatTurnContext, attempt: RetryAttempt?) {
+        // 第一次尝试没有失败信息，也没必要动隧道
+        if (attempt == null || !turn.settings.networkSetting.autoReconnectSshTunnel) return
+        try {
+            if (!sshProxyTunnelResolver.shouldReconnect(attempt.cause)) return
+            val tunnelId = sshProxyTunnelResolver.tunnelIdFor(turn.providerSetting, turn.model, turn.settings)
+                ?: return
+            Log.i(
+                TAG,
+                "Retry ${attempt.retry}/${attempt.maxRetries} after " +
+                    "${attempt.cause.javaClass.simpleName}, reconnecting ssh tunnel $tunnelId",
+            )
+            val running = sshProxyTunnelResolver.reestablish(tunnelId)
+            Log.i(TAG, "SSH tunnel $tunnelId reconnected: running=$running")
+        } catch (e: CancellationException) {
+            // 用户停止生成时必须继续中断，不能被当成隧道故障吞掉
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to reconnect ssh tunnel before retry", e)
+        }
     }
 
     /**
@@ -234,6 +267,8 @@ class ChatRequestFactory(
         val result = withRetry(
             policy = turn.settings.retryPolicy(),
             onRetry = { Log.w(TAG, "Compression request failed, retrying in ${it.delay}", it.cause) },
+            // 压缩请求和正常对话走同一条网络路径，隧道断了也要重建
+            beforeAttempt = { attempt -> reconnectTunnelBeforeRetry(turn, attempt) },
         ) {
             usageRecorder.wrap(
                 providerManager.getProviderByType(turn.providerSetting),

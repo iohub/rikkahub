@@ -61,6 +61,15 @@ class SshPortForward internal constructor(
     val isActive: Boolean
         get() = !closed.get() && !server.isClosed
 
+    /**
+     * 转发可用: 本地还在监听, 且底层 SSH 会话没有断开。
+     *
+     * [isActive] 只看本地 ServerSocket: 会话断开后端口照样 accept, 要到 [openPeer] 才发现失败,
+     * 调用方看到的是一次莫名其妙的中断。判断「要不要重建」时用这个。
+     */
+    val isHealthy: Boolean
+        get() = isActive && connection.isConnected
+
     /** 当前活跃的转发连接数 */
     val activeConnections: Int
         get() = openConnections.get()

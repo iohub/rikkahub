@@ -1373,6 +1373,8 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_page_preferences_network_request_timeout_disabled">不启用</string>
   <string name="setting_page_preferences_network_request_timeout_seconds">%1$d 秒</string>
   <string name="setting_page_preferences_network_request_timeout_input_hint">秒数，0 表示不启用</string>
+  <string name="setting_page_preferences_network_auto_reconnect_ssh">自动重建 SSH 隧道</string>
+  <string name="setting_page_preferences_network_auto_reconnect_ssh_desc">模型经 SSH 隧道代理时，请求超时或断连后自动重建隧道再重试。</string>
   <string name="setting_provider_page_test_non_streaming">非流式</string>
   <string name="setting_provider_page_test_streaming">流式</string>
   <string name="setting_provider_page_test_tool_call">工具调用</string>
