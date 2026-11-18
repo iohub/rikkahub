@@ -135,6 +135,25 @@ class SshTunnelManager(
         Log.i(TAG, "All SSH tunnels shut down (${known.size} known)")
     }
 
+    /**
+     * 用户主动停止全部转发, 同时把设置里的 enabled 全部置回 false。
+     *
+     * 与 [shutdown] 的区别: 用户点通知里的“停止”表示不再需要这些隧道, 下次冷启动不应该
+     * 再被 [startAllEnabled] 自动拉起来。先落盘再断连接, 这样正在建连的转发在结束时
+     * 会看到 [shutDown] 而放弃写回 enabled=true。
+     */
+    suspend fun stopAllAndDisable() {
+        settingsStore.update { settings ->
+            if (settings.sshTunnels.none { it.enabled }) {
+                settings
+            } else {
+                settings.copy(sshTunnels = settings.sshTunnels.map { it.copy(enabled = false) })
+            }
+        }
+        shutdown()
+        Log.i(TAG, "All SSH tunnels stopped and disabled")
+    }
+
     private suspend fun open(id: String) {
         lockOf(id).withLock { openLocked(id) }
     }

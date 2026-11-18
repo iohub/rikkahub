@@ -135,14 +135,28 @@ class SshTunnelForegroundService : Service() {
         return START_STICKY
     }
 
+    /**
+     * 用户主动停止: 除了断连接还要把 enabled 落成 false, 否则下次冷启动会把隧道自动恢复。
+     *
+     * 落盘是挂起操作, 必须等它完成再 stopSelf (作用域会随服务销毁被取消, 提前 stopSelf 会
+     * 让 enabled 停留在 true)。被动销毁 (onDestroy / onTimeout) 仍然只调 shutdown(), 保留
+     * 用户的期望状态以便恢复。
+     */
     private fun stop(startId: Int): Int {
         cancelStateObserver()
-        manager.shutdown()
-        if (isForeground) {
-            stopForeground(STOP_FOREGROUND_REMOVE)
-            isForeground = false
+        serviceScope.launch {
+            try {
+                manager.stopAllAndDisable()
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to stop SSH tunnels", e)
+            } finally {
+                if (isForeground) {
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    isForeground = false
+                }
+                stopSelf(startId)
+            }
         }
-        stopSelf(startId)
         return START_NOT_STICKY
     }
 

@@ -132,6 +132,8 @@ import me.rerere.rikkahub.ui.pages.setting.SettingSearchPage
 import me.rerere.rikkahub.ui.pages.setting.SettingMediaPage
 import me.rerere.rikkahub.ui.pages.setting.SettingMediaProviderDetailPage
 import me.rerere.rikkahub.ui.pages.setting.SettingSpeechPage
+import me.rerere.rikkahub.ui.pages.setting.SettingSshTunnelDetailPage
+import me.rerere.rikkahub.ui.pages.setting.SettingSshTunnelPage
 import me.rerere.rikkahub.ui.pages.setting.SettingWebPage
 import me.rerere.rikkahub.ui.pages.quickstart.QuickStartPage
 import me.rerere.rikkahub.ui.pages.share.handler.ShareHandlerPage
@@ -542,6 +544,14 @@ class RouteActivity : ComponentActivity() {
                                 SettingWebPage()
                             }
 
+                            entry<Screen.SettingSshTunnel> {
+                                SettingSshTunnelPage()
+                            }
+
+                            entry<Screen.SettingSshTunnelDetail> { key ->
+                                SettingSshTunnelDetailPage(key.tunnelId)
+                            }
+
                             entry<Screen.Debug> {
                                 DebugPage()
                             }
@@ -790,6 +800,13 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data object SettingWeb : Screen
+
+    @Serializable
+    data object SettingSshTunnel : Screen
+
+    /** [tunnelId] 为空串表示新建隧道 */
+    @Serializable
+    data class SettingSshTunnelDetail(val tunnelId: String) : Screen
 
     @Serializable
     data object Debug : Screen
