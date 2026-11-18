@@ -93,6 +93,8 @@ internal fun Settings.withoutInvalidReferences(): Settings {
         modeInjections = settings.modeInjections.distinctBy { it.id },
         lorebooks = settings.lorebooks.distinctBy { it.id },
         quickMessages = settings.quickMessages.distinctBy { it.id },
+        // 端口转发按 id 定位，id 为空的条目（没保存过的草稿）和重复 id 都留不住运行状态，直接丢弃
+        sshTunnels = settings.sshTunnels.filter { it.id.isNotBlank() }.distinctBy { it.id },
     )
 }
 
@@ -101,6 +103,14 @@ private fun Settings.withValuesInRange(): Settings = copy(
     searchServiceSelected = searchServiceSelected.coerceIn(0, (searchServices.size - 1).coerceAtLeast(0)),
     defaultTTSPlaybackSpeed = defaultTTSPlaybackSpeed.coerceIn(0.5f, 2.0f),
     autoCompressThreshold = autoCompressThreshold.coerceIn(AUTO_COMPRESS_THRESHOLD_RANGE),
+    // 只把越界的端口收回来：0 表示"还没填"，仍交给校验提示用户，不能悄悄改成别的端口
+    sshTunnels = sshTunnels.map { tunnel ->
+        tunnel.copy(
+            port = tunnel.port.coerceIn(1, 65535),
+            localPort = tunnel.localPort.coerceIn(0, 65535),
+            remotePort = tunnel.remotePort.coerceIn(0, 65535),
+        )
+    },
 )
 
 /** 自动压缩触发比例的可选范围，设置页的滑块也用它 */

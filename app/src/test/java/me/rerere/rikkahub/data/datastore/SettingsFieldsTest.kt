@@ -13,11 +13,14 @@ import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.Lorebook
 import me.rerere.rikkahub.data.model.PromptInjection
 import me.rerere.rikkahub.data.model.QuickMessage
+import me.rerere.rikkahub.data.model.SshTunnelSetting
 import me.rerere.rikkahub.data.model.Tag
 import me.rerere.rikkahub.data.sync.s3.S3Config
 import me.rerere.rikkahub.ui.theme.CustomTheme
 import me.rerere.search.SearchCommonOptions
 import me.rerere.search.SearchServiceOptions
+import me.rerere.workspace.ssh.SshAuthType
+import me.rerere.workspace.ssh.SshHostKey
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Test
@@ -168,6 +171,24 @@ private val SAMPLE = Settings(
     webServerLocalhostOnly = true,
     backupReminderConfig = BackupReminderConfig(enabled = true),
     sponsorAlertDismissedAt = 7,
+    sshTunnels = listOf(
+        SshTunnelSetting(
+            id = "tunnel",
+            name = "db",
+            host = "example.com",
+            port = 2222,
+            username = "dev",
+            authType = SshAuthType.PRIVATE_KEY,
+            encryptedPrivateKey = "v1:key",
+            encryptedPassphrase = "v1:passphrase",
+            hostKey = SshHostKey(type = "ssh-ed25519", key = "AAAAC3NzaC1lZDI1NTE5AAAAI"),
+            bindAddress = "0.0.0.0",
+            localPort = 6008,
+            remoteHost = "10.0.0.1",
+            remotePort = 5432,
+            enabled = true,
+        )
+    ),
 )
 
 private val STORED_KEYS = setOf(
@@ -223,4 +244,5 @@ private val STORED_KEYS = setOf(
     "quick_messages",
     "backup_reminder_config",
     "sponsor_alert_dismissed_at",
+    "ssh_tunnels",
 )

@@ -436,6 +436,12 @@
   <string name="notification_channel_chat_completed">聊天完成</string>
   <string name="notification_channel_chat_live_update">聊天生成進度</string>
   <string name="notification_channel_web_server">網頁伺服器</string>
+  <string name="notification_channel_ssh_tunnel">SSH 連接埠轉送</string>
+  <string name="ssh_tunnel_notification_running">%1$d 條隧道執行中</string>
+  <string name="ssh_tunnel_notification_active">%1$s → %2$s</string>
+  <string name="ssh_tunnel_notification_error">%1$d 條隧道連線失敗</string>
+  <string name="ssh_tunnel_notification_connecting">正在建立隧道…</string>
+  <string name="ssh_tunnel_notification_stop">停止</string>
   <string name="notification_live_update_chip_thinking">思考中</string>
   <string name="notification_live_update_chip_tool">工具</string>
   <string name="notification_live_update_chip_writing">正在書寫</string>

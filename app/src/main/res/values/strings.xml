@@ -440,6 +440,12 @@
   <string name="notification_channel_chat_completed">Chat Completed</string>
   <string name="notification_channel_chat_live_update">Chat Generation Progress</string>
   <string name="notification_channel_web_server">Web Server</string>
+  <string name="notification_channel_ssh_tunnel">SSH Port Forwarding</string>
+  <string name="ssh_tunnel_notification_running">%1$d tunnels running</string>
+  <string name="ssh_tunnel_notification_active">%1$s → %2$s</string>
+  <string name="ssh_tunnel_notification_error">%1$d tunnels failed to connect</string>
+  <string name="ssh_tunnel_notification_connecting">Connecting tunnels…</string>
+  <string name="ssh_tunnel_notification_stop">Stop</string>
   <string name="notification_live_update_chip_thinking">Thinking</string>
   <string name="notification_live_update_chip_tool">Tool</string>
   <string name="notification_live_update_chip_writing">Writing</string>

@@ -535,6 +535,12 @@
   <string name="notification_channel_chat_completed">اكتملت المحادثة</string>
   <string name="notification_channel_chat_live_update">تقدم توليد المحادثة</string>
   <string name="notification_channel_web_server">خادم الويب</string>
+  <string name="notification_channel_ssh_tunnel">إعادة توجيه منافذ SSH</string>
+  <string name="ssh_tunnel_notification_running">عدد الأنفاق العاملة: %1$d</string>
+  <string name="ssh_tunnel_notification_active">%1$s → %2$s</string>
+  <string name="ssh_tunnel_notification_error">تعذر الاتصال بـ %1$d نفق</string>
+  <string name="ssh_tunnel_notification_connecting">جارٍ إنشاء الأنفاق…</string>
+  <string name="ssh_tunnel_notification_stop">إيقاف</string>
   <string name="notification_live_update_chip_thinking">تفكير</string>
   <string name="notification_live_update_chip_tool">أداة</string>
   <string name="notification_live_update_chip_writing">كتابة</string>

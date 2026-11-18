@@ -436,6 +436,12 @@
   <string name="notification_channel_chat_completed">チャット完了</string>
   <string name="notification_channel_chat_live_update">チャット生成の進行状況</string>
   <string name="notification_channel_web_server">Webサーバー</string>
+  <string name="notification_channel_ssh_tunnel">SSH ポート転送</string>
+  <string name="ssh_tunnel_notification_running">%1$d 件のトンネルが実行中</string>
+  <string name="ssh_tunnel_notification_active">%1$s → %2$s</string>
+  <string name="ssh_tunnel_notification_error">%1$d 件のトンネルの接続に失敗しました</string>
+  <string name="ssh_tunnel_notification_connecting">トンネルを接続しています…</string>
+  <string name="ssh_tunnel_notification_stop">停止</string>
   <string name="notification_live_update_chip_thinking">考え中</string>
   <string name="notification_live_update_chip_tool">ツール</string>
   <string name="notification_live_update_chip_writing">書き込み中</string>

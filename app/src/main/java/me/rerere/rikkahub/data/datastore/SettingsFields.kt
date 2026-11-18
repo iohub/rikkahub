@@ -169,6 +169,9 @@ internal val SETTINGS_FIELDS: List<SettingsField<*, *>> = with(SettingsStore) {
         plain(WEB_SERVER_ACCESS_PASSWORD, Settings::webServerAccessPassword) { copy(webServerAccessPassword = it) },
         plain(WEB_SERVER_LOCALHOST_ONLY, Settings::webServerLocalhostOnly) { copy(webServerLocalhostOnly = it) },
 
+        // SSH 端口转发
+        json(SSH_TUNNELS, Settings::sshTunnels) { copy(sshTunnels = it) },
+
         // 提示词注入
         json(MODE_INJECTIONS, Settings::modeInjections) { copy(modeInjections = it) },
         json(LOREBOOKS, Settings::lorebooks) { copy(lorebooks = it) },

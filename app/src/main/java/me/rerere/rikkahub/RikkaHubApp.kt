@@ -39,6 +39,7 @@ import me.rerere.rikkahub.di.dataSourceModule
 import me.rerere.rikkahub.di.repositoryModule
 import me.rerere.rikkahub.di.viewModelModule
 import me.rerere.rikkahub.service.MediaCreationService
+import me.rerere.rikkahub.service.SshTunnelForegroundService
 import me.rerere.rikkahub.service.WebServerService
 import me.rerere.rikkahub.utils.CrashHandler
 import me.rerere.rikkahub.utils.DatabaseUtil
@@ -58,6 +59,7 @@ const val CHAT_LIVE_UPDATE_NOTIFICATION_CHANNEL_ID = "chat_live_update"
 const val WEB_SERVER_NOTIFICATION_CHANNEL_ID = "web_server"
 const val MEDIA_CREATION_NOTIFICATION_CHANNEL_ID = "media_creation"
 const val MEMORY_DREAM_NOTIFICATION_CHANNEL_ID = "memory_dream"
+const val SSH_TUNNEL_NOTIFICATION_CHANNEL_ID = "ssh_tunnel"
 
 class RikkaHubApp : Application() {
     override fun onCreate() {
@@ -111,6 +113,9 @@ class RikkaHubApp : Application() {
 
         // Start WebServer if enabled in settings
         startWebServerIfEnabled()
+
+        // 恢复上次在跑的 SSH 端口转发
+        startSshTunnelIfEnabled()
 
         // Resume media generations interrupted by the last process death
         resumeMediaCreations()
@@ -259,6 +264,30 @@ class RikkaHubApp : Application() {
         }
     }
 
+    private fun startSshTunnelIfEnabled() {
+        get<AppScope>().launch {
+            runCatching {
+                delay(500)
+                val settings = get<SettingsStore>().awaitLoaded()
+                if (settings.sshTunnels.any { it.enabled }) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                        ContextCompat.checkSelfPermission(
+                            this@RikkaHubApp,
+                            android.Manifest.permission.POST_NOTIFICATIONS
+                        ) != PackageManager.PERMISSION_GRANTED
+                    ) {
+                        Log.w(TAG, "startSshTunnelIfEnabled: notification permission not granted, skipping")
+                        return@launch
+                    }
+                    // 隧道列表由服务自己按设置里的 enabled 恢复
+                    SshTunnelForegroundService.start(this@RikkaHubApp)
+                }
+            }.onFailure {
+                Log.e(TAG, "startSshTunnelIfEnabled failed", it)
+            }
+        }
+    }
+
     private fun createNotificationChannel() {
         val notificationManager = NotificationManagerCompat.from(this)
         val chatCompletedChannel = NotificationChannelCompat
@@ -302,6 +331,14 @@ class RikkaHubApp : Application() {
             .setShowBadge(false)
             .build()
         notificationManager.createNotificationChannel(memoryDreamChannel)
+
+        val sshTunnelChannel = NotificationChannelCompat
+            .Builder(SSH_TUNNEL_NOTIFICATION_CHANNEL_ID, NotificationManagerCompat.IMPORTANCE_LOW)
+            .setName(getString(R.string.notification_channel_ssh_tunnel))
+            .setVibrationEnabled(false)
+            .setShowBadge(false)
+            .build()
+        notificationManager.createNotificationChannel(sshTunnelChannel)
     }
 
     override fun onTerminate() {

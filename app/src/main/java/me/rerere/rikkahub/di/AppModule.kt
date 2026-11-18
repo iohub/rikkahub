@@ -15,6 +15,7 @@ import me.rerere.rikkahub.service.ChatFloatingTracker
 import me.rerere.rikkahub.service.ChatNotificationManager
 import me.rerere.rikkahub.service.ChatService
 import me.rerere.rikkahub.service.MediaCreationService
+import me.rerere.rikkahub.service.SshTunnelManager
 import me.rerere.rikkahub.ui.floating.ChatFloatingWindows
 import me.rerere.rikkahub.ui.pages.extensions.workspace.WorkspaceTerminalSessionManager
 import me.rerere.rikkahub.utils.EmojiData
@@ -178,6 +179,15 @@ val appModule = module {
             folderRepo = get(),
             settingsStore = get(),
             filesManager = get()
+        )
+    }
+
+    single {
+        SshTunnelManager(
+            appScope = get(),
+            settingsStore = get(),
+            // 由 repositoryModule 注册为 single，和 SSH 工作区共用连接池
+            sshPool = get(),
         )
     }
 }

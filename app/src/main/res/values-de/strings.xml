@@ -420,6 +420,12 @@
   <string name="notification_channel_chat_completed">Chat abgeschlossen</string>
   <string name="notification_channel_chat_live_update">Fortschritt der Chat-Generierung</string>
   <string name="notification_channel_web_server">Webserver</string>
+  <string name="notification_channel_ssh_tunnel">SSH-Portweiterleitung</string>
+  <string name="ssh_tunnel_notification_running">%1$d Tunnel aktiv</string>
+  <string name="ssh_tunnel_notification_active">%1$s → %2$s</string>
+  <string name="ssh_tunnel_notification_error">%1$d Tunnel fehlgeschlagen</string>
+  <string name="ssh_tunnel_notification_connecting">Tunnel werden verbunden…</string>
+  <string name="ssh_tunnel_notification_stop">Stoppen</string>
   <string name="notification_live_update_chip_thinking">Denken</string>
   <string name="notification_live_update_chip_tool">Tool</string>
   <string name="notification_live_update_chip_writing">Schreiben</string>

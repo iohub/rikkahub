@@ -436,6 +436,12 @@
   <string name="notification_channel_chat_completed">채팅 완료</string>
   <string name="notification_channel_chat_live_update">채팅 생성 진행률</string>
   <string name="notification_channel_web_server">웹 서버</string>
+  <string name="notification_channel_ssh_tunnel">SSH 포트 포워딩</string>
+  <string name="ssh_tunnel_notification_running">%1$d개 터널 실행 중</string>
+  <string name="ssh_tunnel_notification_active">%1$s → %2$s</string>
+  <string name="ssh_tunnel_notification_error">%1$d개 터널 연결 실패</string>
+  <string name="ssh_tunnel_notification_connecting">터널 연결 중…</string>
+  <string name="ssh_tunnel_notification_stop">중지</string>
   <string name="notification_live_update_chip_thinking">생각 중</string>
   <string name="notification_live_update_chip_tool">도구</string>
   <string name="notification_live_update_chip_writing">작성 중</string>
