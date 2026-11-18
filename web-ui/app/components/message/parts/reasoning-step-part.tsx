@@ -51,22 +51,16 @@ export function ReasoningStepPart({ reasoning, collapsedAdaptiveWidth = false, i
   const showThinkingTitle = loading && thinkingTitle != null;
 
   React.useEffect(() => {
-    if (loading) {
-      if (displaySetting?.showThinkingContent) {
-        setExpandState((state) =>
-          state === ReasoningCardState.Collapsed ? ReasoningCardState.Preview : state,
-        );
-      }
-      return;
-    }
+    // 思考卡片恒为默认折叠，生成过程中不做任何自动展开（不再读取 showThinkingContent）
+    if (loading) return;
 
     setExpandState((state) => {
       if (state === ReasoningCardState.Collapsed) return state;
-      return (displaySetting?.autoCloseThinking ?? true)
+      return (displaySetting?.autoCloseThinking ?? false)
         ? ReasoningCardState.Collapsed
         : ReasoningCardState.Expanded;
     });
-  }, [loading, reasoning.reasoning, displaySetting?.showThinkingContent, displaySetting?.autoCloseThinking]);
+  }, [loading, reasoning.reasoning, displaySetting?.autoCloseThinking]);
 
   React.useEffect(() => {
     if (loading && expandState === ReasoningCardState.Preview && contentRef.current) {
@@ -75,11 +69,7 @@ export function ReasoningStepPart({ reasoning, collapsedAdaptiveWidth = false, i
   }, [loading, expandState, reasoning.reasoning]);
 
   const onExpandedChange = (nextExpanded: boolean) => {
-    if (loading) {
-      setExpandState(nextExpanded ? ReasoningCardState.Expanded : ReasoningCardState.Preview);
-      return;
-    }
-
+    // 生成中收起也直接回到 Collapsed，不再回落到 Preview
     setExpandState(nextExpanded ? ReasoningCardState.Expanded : ReasoningCardState.Collapsed);
   };
 

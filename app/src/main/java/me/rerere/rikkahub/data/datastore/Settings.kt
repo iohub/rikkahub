@@ -150,8 +150,12 @@ data class DisplaySetting(
     val showModelName: Boolean = true,
     val showDateTimeInMessage: Boolean = false,
     val showTokenUsage: Boolean = true,
+    /**
+     * 已废弃：思考过程卡片恒为默认折叠，生成过程中不再自动展开，只有用户手动点开才展示文本。
+     * 字段仅保留以兼容历史 DataStore JSON 数据（整块序列化，删除有反序列化风险），逻辑上不再被消费。
+     */
     val showThinkingContent: Boolean = true,
-    val autoCloseThinking: Boolean = true,
+    val autoCloseThinking: Boolean = false,
     val updateCheckDisabledUntilEpochMillis: Long = 0L,
     val showMessageJumper: Boolean = true,
     val messageJumperOnLeft: Boolean = false,

@@ -70,12 +70,8 @@ private class ReasoningState(
     var expandState by mutableStateOf(ReasoningCardState.Collapsed)
     var duration by mutableStateOf(initialDuration)
 
-    fun onExpandedChange(nextExpanded: Boolean, loading: Boolean) {
-        expandState = if (loading) {
-            if (nextExpanded) ReasoningCardState.Expanded else ReasoningCardState.Preview
-        } else {
-            if (nextExpanded) ReasoningCardState.Expanded else ReasoningCardState.Collapsed
-        }
+    fun onExpandedChange(nextExpanded: Boolean) {
+        expandState = if (nextExpanded) ReasoningCardState.Expanded else ReasoningCardState.Collapsed
     }
 }
 
@@ -95,9 +91,11 @@ private fun rememberReasoningState(reasoning: UIMessagePart.Reasoning): Pair<Rea
 
     LaunchedEffect(reasoning.reasoning, loading) {
         if (loading) {
-            if (!state.expandState.expanded && settings.displaySetting.showThinkingContent)
-                state.expandState = ReasoningCardState.Preview
-            scrollState.animateScrollTo(scrollState.maxValue)
+            // 思考卡片恒为默认折叠，生成过程中不再自动外露文本；
+            // 仅在用户手动展开时跟随最新内容滚动到底部
+            if (state.expandState == ReasoningCardState.Expanded) {
+                scrollState.animateScrollTo(scrollState.maxValue)
+            }
         } else {
             if (state.expandState.expanded) {
                 state.expandState = if (settings.displaySetting.autoCloseThinking)
@@ -205,7 +203,7 @@ fun ChainOfThoughtScope.ChatMessageReasoningStep(
 
     ControlledChainOfThoughtStep(
         expanded = state.expandState == ReasoningCardState.Expanded,
-        onExpandedChange = { state.onExpandedChange(it, loading) },
+        onExpandedChange = { state.onExpandedChange(it) },
         icon = {
             Icon(
                 imageVector = HugeIcons.Idea01,

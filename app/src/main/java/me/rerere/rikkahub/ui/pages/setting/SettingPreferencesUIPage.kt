@@ -204,12 +204,6 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
             item {
                 CardGroup {
                     switchItem(
-                        checked = displaySetting.showThinkingContent,
-                        onCheckedChange = { updateDisplaySetting(displaySetting.copy(showThinkingContent = it)) },
-                        supportingContent = { Text(stringResource(R.string.setting_display_page_show_thinking_content_desc)) },
-                        headlineContent = { Text(stringResource(R.string.setting_display_page_show_thinking_content_title)) },
-                    )
-                    switchItem(
                         checked = displaySetting.autoCloseThinking,
                         onCheckedChange = { updateDisplaySetting(displaySetting.copy(autoCloseThinking = it)) },
                         supportingContent = { Text(stringResource(R.string.setting_display_page_auto_collapse_thinking_desc)) },
