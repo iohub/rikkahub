@@ -32,6 +32,7 @@ import me.rerere.rikkahub.BuildConfig
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.SettingsStore
+import me.rerere.rikkahub.data.datastore.getAssistantById
 import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.Avatar
@@ -40,6 +41,7 @@ import me.rerere.rikkahub.data.model.MessageNode
 import me.rerere.rikkahub.data.model.NodeFavoriteTarget
 import me.rerere.rikkahub.data.model.getAssistantOf
 import me.rerere.rikkahub.data.model.getChatModelOf
+import me.rerere.rikkahub.data.repository.AssistantLockManager
 import me.rerere.rikkahub.data.repository.FavoriteRepository
 import me.rerere.rikkahub.service.BackgroundShellManager
 import me.rerere.rikkahub.service.BackgroundShellTask
@@ -126,6 +128,42 @@ class ChatVM(
         old.assistantId == new.assistantId && old.config == new.config &&
             old.modeInjectionIds == new.modeInjectionIds && old.lorebookIds == new.lorebookIds
     }
+
+    // 数据库里这条会话真正所属的助手：助手被加密隐藏时正文不会加载，
+    // 内存里只剩一条同 id 的新建空会话（助手是当前可见的那个），只看内存会误判成「未隐藏」
+    private val persistedAssistantId: StateFlow<Uuid?> = settings
+        .combine(AssistantLockManager.unlockedIds) { _, _ -> }
+        .map { chatService.getConversationAssistantId(_conversationId) }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    /**
+     * 当前会话所属的助手是否处于「加密隐藏」状态。
+     *
+     * 为 true 时聊天页只渲染锁定占位、不渲染任何正文，同时也禁止一切会话写入：
+     * 正文被 ChatService.loadConversation 拦下后内存里只是一条同 id 的空会话，
+     * 写进数据库会覆盖原会话、删掉锁定助手的历史节点。
+     *
+     * 内存归属与数据库归属任一命中即算隐藏，解锁、加密、切换助手都会立刻反映。
+     *
+     * 用 Eagerly 而不是 WhileSubscribed：页面离开时上游若停掉，缓存值会停在离开前的 false，
+     * 用户去设置页加密后回到聊天页会先渲染一帧正文；这里必须始终跟着最新状态走。
+     */
+    val isAssistantHidden: StateFlow<Boolean> = combine(
+        settings,
+        configuredConversation,
+        AssistantLockManager.unlockedIds,
+        persistedAssistantId,
+    ) { settings, conversation, _, persistedId ->
+        settings.isAssistantIdHidden(conversation.assistantId) ||
+            settings.isAssistantIdHidden(persistedId)
+    }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    // 助手找不到（助手被删除后的孤儿会话）时按未隐藏处理，和 ChatService.loadConversation 一致
+    private fun Settings.isAssistantIdHidden(assistantId: Uuid?): Boolean =
+        assistantId?.let { getAssistantById(it) }?.let(AssistantLockManager::isHidden) == true
 
     // 会话视角下的助手：会话开始后，模型、思考级别、搜索等以会话上固定的配置为准
     val assistant: StateFlow<Assistant> = combine(settings, configuredConversation) { settings, conversation ->
@@ -244,6 +282,8 @@ class ChatVM(
      * @param answer 是否触发消息生成，如果为false，则仅添加消息到消息列表中
      */
     fun handleMessageSend(content: List<UIMessagePart>,answer: Boolean = true) {
+        // 助手已加密隐藏时一律不写：正文根本没加载进来，写下去只会覆盖原会话、删掉历史节点
+        if (isAssistantHidden.value) return
         if (content.isEmptyInputMessage()) return
         analytics.logEvent("ai_send_message", null)
 
@@ -251,6 +291,7 @@ class ChatVM(
     }
 
     fun handleMessageEdit(parts: List<UIMessagePart>, messageId: Uuid) {
+        if (isAssistantHidden.value) return
         if (parts.isEmptyInputMessage()) return
         analytics.logEvent("ai_edit_message", null)
 
@@ -260,6 +301,8 @@ class ChatVM(
     }
 
     fun handleCompressContext(additionalPrompt: String, keepRecentMessages: Int): Job {
+        // 助手已加密隐藏时不做压缩：压缩结果会写进被锁住的会话
+        if (isAssistantHidden.value) return viewModelScope.launch { }
         return viewModelScope.launch {
             chatService.compressConversation(_conversationId, additionalPrompt, keepRecentMessages).onFailure {
                 chatService.addError(it, title = context.getString(R.string.error_title_compress_conversation))
@@ -286,6 +329,8 @@ class ChatVM(
     }
 
     fun regenerateAtMessage(message: UIMessage) {
+        // 助手已加密隐藏时不再继续生成，避免把回复写进锁定会话
+        if (isAssistantHidden.value) return
         analytics.logEvent("ai_regenerate_at_message", null)
         chatService.regenerateAtMessage(_conversationId, message.id)
     }
@@ -295,6 +340,7 @@ class ChatVM(
         approved: Boolean,
         reason: String = ""
     ) {
+        if (isAssistantHidden.value) return
         analytics.logEvent("ai_tool_approval", null)
         chatService.handleToolApproval(_conversationId, toolCallId, approved, reason)
     }
@@ -303,6 +349,7 @@ class ChatVM(
         toolCallId: String,
         answer: String,
     ) {
+        if (isAssistantHidden.value) return
         analytics.logEvent("ai_tool_answer", null)
         chatService.handleToolApproval(_conversationId, toolCallId, approved = true, answer = answer)
     }

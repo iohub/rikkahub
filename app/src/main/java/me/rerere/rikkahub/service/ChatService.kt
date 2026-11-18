@@ -162,7 +162,14 @@ class ChatService(
         }
 
         override suspend fun write(previous: Conversation?, current: Conversation) {
-            if (previous == null && !conversationRepo.existsConversationById(current.id)) {
+            if (previous == null) {
+                // 内存里这份会话从没和数据库对上过：数据库里已经有同 id 的记录，
+                // 说明它不是新建的会话（最典型的是所属助手被加密隐藏、加载被拦下后
+                // 又用同一个 id 建的空会话）。这时覆盖会删掉原记录的历史节点，宁可不写。
+                if (conversationRepo.getConversationById(current.id) != null) {
+                    Log.w(TAG, "write: skip overwriting never-loaded conversation ${current.id}")
+                    return
+                }
                 conversationRepo.insertConversation(current)
             } else {
                 conversationRepo.updateConversation(current)
@@ -257,6 +264,15 @@ class ChatService(
     suspend fun getConversation(conversationId: Uuid): Conversation? =
         sessionManager.get(conversationId)?.takeIf { it.isInitialized }?.state?.value
             ?: conversationRepo.getConversationById(conversationId)
+
+    /**
+     * 数据库里这条会话所属的助手；会话还没有落库（新会话）时返回 null。
+     *
+     * 正文被加密助手拦住时内存里只剩一条同 id 的新建空会话（助手是当前可见的那个），
+     * 所以界面判断「这条会话是否属于隐藏助手」必须以这里的结果为准。
+     */
+    suspend fun getConversationAssistantId(conversationId: Uuid): Uuid? =
+        conversationRepo.getConversationById(conversationId)?.assistantId
 
     fun getGenerationJobStateFlow(conversationId: Uuid): Flow<Job?> =
         sessionManager.getGenerationJobStateFlow(conversationId)

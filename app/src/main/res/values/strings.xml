@@ -36,6 +36,9 @@
   <string name="assistant_importer_unsupported_spec">Unsupported spec: %s</string>
   <string name="assistant_lock_action">Encrypt and hide</string>
   <string name="assistant_lock_badge">Encrypted</string>
+  <string name="assistant_lock_chat_hint">Go to Assistant settings and tap the title 5 times within 5 seconds to unlock.</string>
+  <string name="assistant_lock_chat_message">This assistant is encrypted. Unlock it to view the conversation.</string>
+  <string name="assistant_lock_chat_title">Assistant is locked</string>
   <string name="assistant_lock_locked_toast">Assistant encrypted. Tap the title 5 times within 5 seconds to unlock.</string>
   <string name="assistant_lock_no_hidden">No encrypted assistants</string>
   <string name="assistant_lock_password">Password</string>
