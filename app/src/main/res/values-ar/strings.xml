@@ -2035,4 +2035,7 @@
   <string name="setting_remote_tts_clone_missing_file">اختر ملف الصوت المرجعي أولًا</string>
   <string name="setting_remote_tts_clone_file_too_large">الملف كبير جدًا (الحد الأقصى 20 ميغابايت للملف الواحد)</string>
   <string name="setting_remote_tts_clone_base_model_only">هذا الطراز لا يدعم الاستنساخ، انتقل إلى طراز من نوع base.</string>
+  <string name="setting_remote_tts_synthesis_voice_missing">فشل التوليد: قد لا يكون الصوت «%1$s» موجودًا. اختر صوتًا آخر من القائمة أو اتركه فارغًا لاستخدام الصوت الافتراضي للخادم (استجابة الخادم: %2$s)</string>
+  <string name="setting_remote_tts_synthesis_failed">فشل التوليد: تحقق من توفر عنوان الخدمة والطراز (استجابة الخادم: %1$s)</string>
+  <string name="setting_remote_tts_clone_model_unsupported">الطراز الحالي (%1$s) لا يدعم الاستنساخ، شغّل الخدمة بطراز من نوع base.</string>
 </resources>

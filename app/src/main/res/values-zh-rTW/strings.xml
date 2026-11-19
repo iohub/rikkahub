@@ -2035,4 +2035,7 @@
   <string name="setting_remote_tts_clone_missing_file">請先選擇參考音訊檔案</string>
   <string name="setting_remote_tts_clone_file_too_large">檔案過大（單檔上限 20MB）</string>
   <string name="setting_remote_tts_clone_base_model_only">目前模型不支援複製音色，需 base 類型模型。</string>
+  <string name="setting_remote_tts_synthesis_voice_missing">合成失敗：音色「%1$s」可能不存在，請在音色清單中重新選擇，或留空使用伺服器預設音色（伺服器回應：%2$s）</string>
+  <string name="setting_remote_tts_synthesis_failed">合成失敗：請檢查服務位址與模型是否可用（伺服器回應：%1$s）</string>
+  <string name="setting_remote_tts_clone_model_unsupported">目前模型（%1$s）不支援複製音色，需以 base 類型模型啟動服務</string>
 </resources>

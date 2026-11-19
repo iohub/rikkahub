@@ -35,6 +35,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -112,6 +113,9 @@ fun SettingRemoteTTSPage(vm: SettingVM = koinViewModel()) {
     var testing by remember { mutableStateOf(false) }
     var testModels by remember { mutableStateOf<List<String>?>(null) }
     var testError by remember { mutableStateOf<String?>(null) }
+    // 服务端 /models 的探测结果，只服务于克隆区的「当前模型不支持克隆」预警：
+    // 与 testModels 分开，避免自动探测就把「连接成功」的文案点亮。
+    var detectedModels by remember { mutableStateOf<List<String>?>(null) }
     // 克隆注册的表单状态提到 LazyColumn 元素之外：滚出屏幕再回来时已读进内存的参考音频不会丢
     val cloneForm = remember { CloneVoiceForm() }
 
@@ -141,7 +145,10 @@ fun SettingRemoteTTSPage(vm: SettingVM = koinViewModel()) {
                 testError = context.getString(R.string.setting_remote_tts_connection_unhealthy)
                 return
             }
-            testModels = api.listModels(provider)
+            val models = api.listModels(provider)
+            testModels = models
+            // 克隆区预警复用同一份探测结果：命中 customvoice / voicedesign 就提前提示
+            detectedModels = models
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -160,8 +167,19 @@ fun SettingRemoteTTSPage(vm: SettingVM = koinViewModel()) {
     LaunchedEffect(target?.id, target?.baseUrl, target?.apiKey, target?.model) {
         val provider = target ?: return@LaunchedEffect
         if (provider.baseUrl.isBlank() || provider.baseUrl.toHttpUrlOrNull() == null) return@LaunchedEffect
+        // 换了端点/密钥/模型，旧服务端的探测结果立刻作废，避免短暂的跨端点误报
+        detectedModels = null
         delay(VOICE_REFRESH_DEBOUNCE_MS)
         loadVoices(provider)
+        // 顺带探测 /models，供克隆区提前提示「当前模型不支持克隆」。
+        // 失败静默：进页面不该因为探测失败就报错，连接测试有自己的错误展示。
+        detectedModels = try {
+            api.listModels(provider)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            null
+        }
     }
 
     val defaultTestText = stringResource(R.string.setting_remote_tts_test_text)
@@ -177,10 +195,17 @@ fun SettingRemoteTTSPage(vm: SettingVM = koinViewModel()) {
         tts.speak(text)
     }
 
-    // 合成失败时把控制器的错误抛成提示条
+    // 合成失败时把控制器的错误抛成提示条。
+    // 「音色不存在」在服务端是 502 + `synthesis failed`，而 TtsController 只保留 message 文本，
+    // 这里在展示前把它翻译成用户能照做的提示（见 [synthesisErrorMessage]）。
+    // voice 用 rememberUpdatedState 取最新值：LaunchedEffect 的 block 只在 ttsError 变化时重启。
+    val currentVoice by rememberUpdatedState(target?.voice.orEmpty())
     LaunchedEffect(ttsError) {
         val message = ttsError ?: return@LaunchedEffect
-        toaster.show(message, type = ToastType.Error)
+        toaster.show(
+            message = synthesisErrorMessage(context, message, currentVoice),
+            type = ToastType.Error,
+        )
     }
 
     // 只回写被编辑的那一条，其它提供商（含内置系统 TTS）原样保留
@@ -326,6 +351,7 @@ fun SettingRemoteTTSPage(vm: SettingVM = koinViewModel()) {
                         api = api,
                         currentVoice = target.voice,
                         voices = voices,
+                        detectedModels = detectedModels,
                         form = cloneForm,
                         refreshVoices = { loadVoices(target) },
                         onUseVoice = { voice -> useVoice(target.id, voice) },
@@ -483,6 +509,39 @@ private const val CLONE_MAX_UPLOAD_BYTES: Long = 20L * 1024 * 1024
 /** 音色列表自动刷新的防抖窗口：逐字输入 baseUrl 时不至于每一击都发一次请求 */
 private const val VOICE_REFRESH_DEBOUNCE_MS = 500L
 
+/** customvoice / voicedesign 类型模型不支持克隆注册（服务端返回 400），用于克隆区提前预警 */
+private val CLONE_UNSUPPORTED_MODEL_PATTERN = Regex(
+    "customvoice|custom_voice|voicedesign|voice_design",
+    RegexOption.IGNORE_CASE,
+)
+
+/**
+ * 合成失败的特征。
+ *
+ * 服务端在 `voice` 指向不存在的音色时返回 **502** + `{"error":{"message":"synthesis failed"}}`，
+ * 但 [TtsController][me.rerere.tts.controller.TtsController] 只把异常 message 透到 UI、
+ * 丢掉了 statusCode，所以这里只能在文本里认 `synthesis failed` 与 `502`。
+ */
+private val SYNTHESIS_FAILURE_PATTERN = Regex(
+    "synthesis failed|\\b502\\b",
+    RegexOption.IGNORE_CASE,
+)
+
+/**
+ * 把「合成失败」翻译成用户能照做的提示，原始 message 附在末尾，不丢诊断信息。
+ *
+ * 音色名打错、或服务端重启后克隆音色丢失时，用户只会看到 `synthesis failed`，
+ * 完全不知道该改哪一项；[voice] 为空说明用的是服务端默认音色，问题多半在地址/模型。
+ */
+private fun synthesisErrorMessage(context: Context, message: String, voice: String): String {
+    if (!SYNTHESIS_FAILURE_PATTERN.containsMatchIn(message)) return message
+    return if (voice.isBlank()) {
+        context.getString(R.string.setting_remote_tts_synthesis_failed, message)
+    } else {
+        context.getString(R.string.setting_remote_tts_synthesis_voice_missing, voice, message)
+    }
+}
+
 /**
  * 「克隆音色注册」分组。
  *
@@ -495,6 +554,7 @@ private fun CloneVoiceGroup(
     api: RemoteTTSApi,
     currentVoice: String,
     voices: List<RemoteVoiceInfo>,
+    detectedModels: List<String>?,
     form: CloneVoiceForm,
     refreshVoices: suspend () -> List<RemoteVoiceInfo>,
     onUseVoice: (String) -> Unit,
@@ -605,9 +665,25 @@ private fun CloneVoiceGroup(
     val wavLabel = stringResource(R.string.setting_remote_tts_clone_pick_wav)
     val spkLabel = stringResource(R.string.setting_remote_tts_clone_pick_spk)
     val rvqLabel = stringResource(R.string.setting_remote_tts_clone_pick_rvq)
+    // 模型类型预警：只有在 /models 探测成功且命中 customvoice/voicedesign 时才提示。
+    // 未探测过或列表为空时保持沉默，避免对 base 模型误报。
+    val unsupportedModelHint = detectedModels
+        ?.firstOrNull { CLONE_UNSUPPORTED_MODEL_PATTERN.containsMatchIn(it) }
+        ?.let { stringResource(R.string.setting_remote_tts_clone_model_unsupported, it) }
 
     CardGroup(title = { Text(stringResource(R.string.setting_remote_tts_group_clone)) }) {
         item(headlineContent = { Text(stringResource(R.string.setting_remote_tts_clone_hint)) })
+
+        if (unsupportedModelHint != null) {
+            item(
+                headlineContent = {
+                    Text(
+                        text = unsupportedModelHint,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                },
+            )
+        }
 
         formItem(
             headlineContent = { Text(stringResource(R.string.setting_remote_tts_clone_name)) },

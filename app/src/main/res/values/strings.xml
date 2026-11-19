@@ -2114,4 +2114,7 @@
   <string name="setting_remote_tts_clone_missing_file">Select a reference audio file first</string>
   <string name="setting_remote_tts_clone_file_too_large">File too large (single file limit is 20 MB)</string>
   <string name="setting_remote_tts_clone_base_model_only">This model cannot clone voices; switch to a base-type model.</string>
+  <string name="setting_remote_tts_synthesis_voice_missing">Synthesis failed: voice “%1$s” may not exist. Pick another one from the voice list, or leave it empty to use the server default. Server said: %2$s</string>
+  <string name="setting_remote_tts_synthesis_failed">Synthesis failed: check that the service address and model are available. Server said: %1$s</string>
+  <string name="setting_remote_tts_clone_model_unsupported">The current model (%1$s) does not support cloning; start the server with a base-type model.</string>
 </resources>

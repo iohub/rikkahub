@@ -2037,4 +2037,7 @@
   <string name="setting_remote_tts_clone_missing_file">Сначала выберите файл опорного аудио</string>
   <string name="setting_remote_tts_clone_file_too_large">Файл слишком большой (лимит 20 МБ на файл)</string>
   <string name="setting_remote_tts_clone_base_model_only">Эта модель не поддерживает клонирование; переключитесь на модель типа base.</string>
+  <string name="setting_remote_tts_synthesis_voice_missing">Синтез не удался: голос «%1$s», вероятно, не существует. Выберите другой голос в списке или оставьте поле пустым, чтобы использовать голос сервера по умолчанию (ответ сервера: %2$s)</string>
+  <string name="setting_remote_tts_synthesis_failed">Синтез не удался: проверьте доступность адреса сервиса и модели (ответ сервера: %1$s)</string>
+  <string name="setting_remote_tts_clone_model_unsupported">Текущая модель (%1$s) не поддерживает клонирование; запустите сервис с моделью типа base.</string>
 </resources>

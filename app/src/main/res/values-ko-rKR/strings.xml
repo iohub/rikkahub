@@ -2037,4 +2037,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="setting_remote_tts_clone_missing_file">먼저 참조 오디오 파일을 선택하세요</string>
   <string name="setting_remote_tts_clone_file_too_large">파일이 너무 큽니다(파일당 최대 20MB)</string>
   <string name="setting_remote_tts_clone_base_model_only">이 모델은 복제를 지원하지 않습니다. base 유형 모델로 전환하세요.</string>
+  <string name="setting_remote_tts_synthesis_voice_missing">합성 실패: ‘%1$s’ 음색이 없을 수 있습니다. 음색 목록에서 다시 선택하거나 비워 두어 서버 기본 음색을 사용하세요(서버 응답: %2$s)</string>
+  <string name="setting_remote_tts_synthesis_failed">합성 실패: 서비스 주소와 모델을 사용할 수 있는지 확인하세요(서버 응답: %1$s)</string>
+  <string name="setting_remote_tts_clone_model_unsupported">현재 모델(%1$s)은 복제를 지원하지 않습니다. base 유형 모델로 서비스를 시작하세요.</string>
 </resources>

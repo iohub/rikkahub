@@ -2035,4 +2035,7 @@
   <string name="setting_remote_tts_clone_missing_file">Zuerst eine Referenzaudiodatei auswählen</string>
   <string name="setting_remote_tts_clone_file_too_large">Datei zu groß (maximal 20 MB pro Datei)</string>
   <string name="setting_remote_tts_clone_base_model_only">Dieses Modell unterstützt kein Klonen; wechsle zu einem Modell vom Typ base.</string>
+  <string name="setting_remote_tts_synthesis_voice_missing">Synthese fehlgeschlagen: Die Stimme „%1$s“ existiert vermutlich nicht. Wähle in der Stimmenliste eine andere oder lasse das Feld leer, um die Standardstimme des Servers zu nutzen (Server: %2$s)</string>
+  <string name="setting_remote_tts_synthesis_failed">Synthese fehlgeschlagen: Prüfe, ob Dienstadresse und Modell verfügbar sind (Server: %1$s)</string>
+  <string name="setting_remote_tts_clone_model_unsupported">Das aktuelle Modell (%1$s) unterstützt kein Klonen; starte den Dienst mit einem Modell vom Typ base.</string>
 </resources>
