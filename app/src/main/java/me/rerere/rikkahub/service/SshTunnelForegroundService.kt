@@ -6,6 +6,8 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.net.ConnectivityManager
+import android.net.Network
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
@@ -78,6 +80,14 @@ class SshTunnelForegroundService : Service() {
     private var stateObserverJob: Job? = null
     private var isForeground = false
 
+    // 网络恢复时叫醒守护协程, 让隧道不用等下一个巡检周期就能重连
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        registerNetworkCallback()
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -94,6 +104,7 @@ class SshTunnelForegroundService : Service() {
     }
 
     override fun onDestroy() {
+        unregisterNetworkCallback()
         cancelStateObserver()
         manager.shutdown()
         if (isForeground) {
@@ -107,6 +118,7 @@ class SshTunnelForegroundService : Service() {
     override fun onTimeout(startId: Int, fgsType: Int) {
         // specialUse 没有时长限制, 这里只是兜底
         Log.w(TAG, "Foreground service timed out (type=$fgsType)")
+        unregisterNetworkCallback()
         cancelStateObserver()
         manager.shutdown()
         if (isForeground) {
@@ -172,6 +184,37 @@ class SshTunnelForegroundService : Service() {
         stateObserverJob = null
     }
 
+    /**
+     * 监听默认网络: 网络恢复时叫醒守护协程, 立刻检查一次隧道而不是等满一个巡检周期。
+     *
+     * 注册失败 (个别 ROM 会拒绝) 只记日志: 隧道还能靠巡检周期和请求失败重试自愈, 不能因为
+     * 监听网络失败就让服务起不来。
+     */
+    private fun registerNetworkCallback() {
+        runCatching {
+            val connectivity = getSystemService(ConnectivityManager::class.java) ?: return
+            val callback = object : ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: Network) {
+                    manager.notifyNetworkAvailable()
+                }
+            }
+            connectivity.registerDefaultNetworkCallback(callback)
+            networkCallback = callback
+        }.onFailure {
+            Log.w(TAG, "Unable to watch network changes", it)
+        }
+    }
+
+    private fun unregisterNetworkCallback() {
+        val callback = networkCallback ?: return
+        networkCallback = null
+        runCatching {
+            getSystemService(ConnectivityManager::class.java)?.unregisterNetworkCallback(callback)
+        }.onFailure {
+            Log.w(TAG, "Unable to stop watching network changes", it)
+        }
+    }
+
     private fun enterForegroundCompat(): Boolean {
         return try {
             val notification = buildNotification()
@@ -204,9 +247,15 @@ class SshTunnelForegroundService : Service() {
 
     private fun buildNotification(): Notification {
         val active = activeTunnelLines()
-        val failing = manager.states.value.count { state -> state.value.phase == SshTunnelManager.Phase.ERROR }
+        val states = manager.states.value.values
+        // 自动重连中的隧道不算失败: 守护协程正在退避重试, 通知里报错只会让用户白紧张
+        val reconnecting = states.count { it.isAutoRetrying }
+        val failing = states.count { state ->
+            state.phase == SshTunnelManager.Phase.ERROR && !state.isAutoRetrying
+        }
         val text = when {
             active.isNotEmpty() -> active.first()
+            reconnecting > 0 -> getString(R.string.ssh_tunnel_notification_reconnecting, reconnecting)
             failing > 0 -> getString(R.string.ssh_tunnel_notification_error, failing)
             else -> getString(R.string.ssh_tunnel_notification_connecting)
         }
@@ -227,6 +276,10 @@ class SshTunnelForegroundService : Service() {
             .addAction(0, getString(R.string.ssh_tunnel_notification_stop), buildStopPendingIntent())
             .build()
     }
+
+    /** 正在被守护协程自动重连: 即使已经连续失败多次也还会继续退避重试, 不算最终失败 */
+    private val SshTunnelManager.TunnelState.isAutoRetrying: Boolean
+        get() = autoRetryable && reconnectAttempt > 0
 
     /** 每条运行中的隧道显示成 `127.0.0.1:6008 → localhost:6008` */
     private fun activeTunnelLines(): List<String> {

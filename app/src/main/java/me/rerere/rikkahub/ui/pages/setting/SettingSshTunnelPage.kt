@@ -248,8 +248,13 @@ fun SettingSshTunnelPage() {
                                     } else {
                                         stringResource(R.string.ssh_tunnel_port_auto)
                                     }
+                                    val reconnectAttempt = state?.reconnectAttempt ?: 0
                                     val statusText = when {
                                         running -> stringResource(R.string.ssh_tunnel_status_running, localPort)
+                                        // 自动重连中: 让用户看到在重试第几次, 而不是一直「正在连接」
+                                        connecting && reconnectAttempt > 0 ->
+                                            stringResource(R.string.ssh_tunnel_status_reconnecting, reconnectAttempt)
+
                                         connecting -> stringResource(R.string.ssh_tunnel_status_connecting)
                                         state?.phase == SshTunnelManager.Phase.ERROR ->
                                             state.error ?: stringResource(R.string.ssh_tunnel_status_stopped)

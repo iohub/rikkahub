@@ -463,6 +463,7 @@
   <string name="ssh_tunnel_notification_active">%1$s → %2$s</string>
   <string name="ssh_tunnel_notification_error">%1$d 条隧道连接失败</string>
   <string name="ssh_tunnel_notification_connecting">正在建立隧道…</string>
+  <string name="ssh_tunnel_notification_reconnecting">%1$d 条隧道正在重连…</string>
   <string name="ssh_tunnel_notification_stop">停止</string>
   <string name="setting_page_ssh_tunnel">SSH 端口转发</string>
   <string name="setting_page_ssh_tunnel_desc">通过 SSH 把本地端口转发到远端主机</string>
@@ -477,6 +478,7 @@
   <string name="ssh_tunnel_empty_desc">点击右下角 + 添加，或直接在编辑页粘贴 ssh -L 命令自动填充</string>
   <string name="ssh_tunnel_status_stopped">已停止</string>
   <string name="ssh_tunnel_status_connecting">正在连接…</string>
+  <string name="ssh_tunnel_status_reconnecting">正在重连…（第 %1$d 次）</string>
   <string name="ssh_tunnel_status_running">运行中 · 本地端口 %1$d</string>
   <string name="ssh_tunnel_port_auto">自动</string>
   <string name="ssh_tunnel_host_key_title">确认 SSH 主机指纹</string>

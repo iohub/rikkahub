@@ -464,6 +464,7 @@
   <string name="ssh_tunnel_notification_active">%1$s → %2$s</string>
   <string name="ssh_tunnel_notification_error">%1$d tunnels failed to connect</string>
   <string name="ssh_tunnel_notification_connecting">Connecting tunnels…</string>
+  <string name="ssh_tunnel_notification_reconnecting">%1$d tunnels reconnecting…</string>
   <string name="ssh_tunnel_notification_stop">Stop</string>
   <string name="setting_page_ssh_tunnel">SSH port forwarding</string>
   <string name="setting_page_ssh_tunnel_desc">Forward a local port to a remote host over SSH</string>
@@ -478,6 +479,7 @@
   <string name="ssh_tunnel_empty_desc">Tap + to add one, or paste an ssh -L command in the editor to fill the form automatically</string>
   <string name="ssh_tunnel_status_stopped">Stopped</string>
   <string name="ssh_tunnel_status_connecting">Connecting…</string>
+  <string name="ssh_tunnel_status_reconnecting">Reconnecting… (attempt %1$d)</string>
   <string name="ssh_tunnel_status_running">Running · local port %1$d</string>
   <string name="ssh_tunnel_port_auto">Automatic</string>
   <string name="ssh_tunnel_host_key_title">Confirm SSH host fingerprint</string>
