@@ -49,6 +49,15 @@ object TtsAudioCache {
 
     private const val EXTENSION = "bin"
 
+    /**
+     * 写入用的临时文件后缀。
+     *
+     * [put] 先写 `tmp_*.part` 再原子重命名到目标文件。备份遍历缓存目录时必须跳过它：
+     * 半成品一旦被打进备份并还原到 `tts_audio/` 下，[stats] / [clear] 都按 `.bin` 过滤，
+     * 既不统计也不清理，会成为永久残留。
+     */
+    const val PARTIAL_SUFFIX = ".part"
+
     // 文件格式版本，读取时不匹配就当作 miss
     private const val FORMAT_VERSION = 1
 
@@ -113,7 +122,7 @@ object TtsAudioCache {
             parent.mkdirs()
             val payload = encodePayload(response)
             // 先写临时文件再重命名，避免并发读取到写了一半的缓存
-            val temp = File.createTempFile("tmp_", ".part", parent)
+            val temp = File.createTempFile("tmp_", PARTIAL_SUFFIX, parent)
             try {
                 temp.writeBytes(payload)
                 if (!temp.renameTo(target)) {

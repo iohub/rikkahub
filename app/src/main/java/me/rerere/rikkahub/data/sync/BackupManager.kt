@@ -23,6 +23,7 @@ import me.rerere.rikkahub.data.db.AppDatabaseFactory
 import me.rerere.rikkahub.data.db.SQLiteConfiguration
 import me.rerere.rikkahub.data.files.FileFolders
 import me.rerere.rikkahub.data.files.MediaCreationFiles
+import me.rerere.tts.cache.TtsAudioCache
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.file.Files
@@ -67,9 +68,14 @@ class BackupManager(
                         }
                         for (file in files.filter { it.isFile }) {
                             currentCoroutineContext().ensureActive()
-                            // A media result still being downloaded is incomplete and gets renamed when it finishes.
-                            if (folder == FileFolders.MEDIA_CREATION &&
-                                file.name.endsWith(MediaCreationFiles.PARTIAL_SUFFIX)
+                            // Half-written files are excluded: media results are renamed when the
+                            // download finishes, and tts audio cache files are written as tmp_*.part
+                            // before being renamed. Restoring such a leftover would leave a file that
+                            // stats()/clear() (which only look at .bin) can never count or remove.
+                            if ((folder == FileFolders.MEDIA_CREATION &&
+                                    file.name.endsWith(MediaCreationFiles.PARTIAL_SUFFIX)) ||
+                                (folder == FileFolders.TTS_AUDIO &&
+                                    file.name.endsWith(TtsAudioCache.PARTIAL_SUFFIX))
                             ) {
                                 continue
                             }

@@ -2038,4 +2038,11 @@
   <string name="setting_remote_tts_synthesis_voice_missing">合成失敗：音色「%1$s」可能不存在，請在音色清單中重新選擇，或留空使用伺服器預設音色（伺服器回應：%2$s）</string>
   <string name="setting_remote_tts_synthesis_failed">合成失敗：請檢查服務位址與模型是否可用（伺服器回應：%1$s）</string>
   <string name="setting_remote_tts_clone_model_unsupported">目前模型（%1$s）不支援複製音色，需以 base 類型模型啟動服務</string>
+  <string name="setting_remote_tts_group_cache">語音快取</string>
+  <string name="setting_remote_tts_cache_enabled">啟用快取</string>
+  <string name="setting_remote_tts_cache_enabled_desc">合成結果加密儲存在本機，同一段文字再次朗讀時直接重複使用，不再請求伺服器</string>
+  <string name="setting_remote_tts_cache_stats">%1$d 筆 · %2$s</string>
+  <string name="setting_remote_tts_cache_clear">清除快取</string>
+  <string name="setting_remote_tts_cache_clear_confirm">將刪除本機 %1$s 的快取語音？快取可以重新產生，但下次播放需要重新請求伺服器。</string>
+  <string name="setting_remote_tts_cache_cleared">已清除 %1$d 筆快取</string>
 </resources>

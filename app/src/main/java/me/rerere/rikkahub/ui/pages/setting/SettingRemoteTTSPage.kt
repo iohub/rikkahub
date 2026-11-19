@@ -34,6 +34,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -68,7 +69,9 @@ import me.rerere.rikkahub.ui.context.LocalToaster
 import me.rerere.rikkahub.ui.pages.setting.components.remoteSamplingItems
 import me.rerere.rikkahub.ui.pages.setting.components.remoteTTSItems
 import me.rerere.rikkahub.ui.theme.CustomColors
+import me.rerere.rikkahub.utils.fileSizeToString
 import me.rerere.rikkahub.utils.plus
+import me.rerere.tts.cache.TtsAudioCache
 import me.rerere.tts.provider.TTSProviderSetting
 import me.rerere.tts.provider.providers.RemoteTTSApi
 import me.rerere.tts.provider.providers.RemoteVoiceInfo
@@ -370,6 +373,16 @@ fun SettingRemoteTTSPage(vm: SettingVM = koinViewModel()) {
                         onUseVoice = { voice -> useVoice(target.id, voice) },
                     )
                 }
+
+                // 语音缓存：合成结果加密落在 filesDir/tts_audio/<providerId>/，是本机可再生产物
+                item {
+                    AudioCacheGroup(
+                        provider = target,
+                        onEnabledChange = { enabled ->
+                            updateRemoteProvider(target.copy(cacheEnabled = enabled))
+                        },
+                    )
+                }
             }
 
             item {
@@ -554,6 +567,141 @@ private fun synthesisErrorMessage(context: Context, message: String, voice: Stri
         context.getString(R.string.setting_remote_tts_synthesis_failed, message)
     } else {
         context.getString(R.string.setting_remote_tts_synthesis_voice_missing, voice, message)
+    }
+}
+
+/**
+ * 「语音缓存」分组。
+ *
+ * 缓存由 [TtsAudioCache] 写在本机 `filesDir/tts_audio/<providerId>/` 下，是**可再生产物**：
+ * 清空只是让下次播放重新请求服务端，不像删除服务端音色那样不可恢复，所以确认文案只说「需要重新合成」。
+ *
+ * 缓存键里已经排除了 `cacheEnabled` 本身（见 [TtsAudioCache.buildKey]），
+ * 所以这里的开关不需要任何清理动作，关掉后只是不再读写缓存。
+ */
+@Composable
+private fun AudioCacheGroup(
+    provider: TTSProviderSetting.RemoteTTS,
+    onEnabledChange: (Boolean) -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    // 统计刷新计数：清空成功后自增，produceState 才会重新扫一遍目录
+    var refreshTick by remember { mutableStateOf(0) }
+    var pendingClear by remember { mutableStateOf(false) }
+    var clearing by remember { mutableStateOf(false) }
+    // 清空失败的原因内联显示，和本页其它错误一致；成功条数同样内联展示
+    var clearError by remember { mutableStateOf<String?>(null) }
+    var clearedCount by remember { mutableStateOf<Int?>(null) }
+
+    val providerId = provider.id.toString()
+    // 目录扫描是同步 IO，必须放到 IO 线程；-1 是「还没统计完」的哨兵值（同 SettingPage 的 countChatFiles 用法）
+    val stats by produceState(-1 to 0L, providerId, refreshTick) {
+        value = withContext(Dispatchers.IO) { TtsAudioCache.stats(providerId) }
+    }
+    val totalBytes = stats.second.coerceAtLeast(0L)
+    val sizeLabel = totalBytes.fileSizeToString()
+
+    CardGroup(title = { Text(stringResource(R.string.setting_remote_tts_group_cache)) }) {
+        switchItem(
+            checked = provider.cacheEnabled,
+            onCheckedChange = onEnabledChange,
+            supportingContent = {
+                Text(stringResource(R.string.setting_remote_tts_cache_enabled_desc))
+            },
+            headlineContent = { Text(stringResource(R.string.setting_remote_tts_cache_enabled)) },
+        )
+
+        // 条目数 + 实际占用：统计未完成时显示「计算中」，避免先闪一下「0 条 · 0 B」
+        item(
+            headlineContent = {
+                if (stats.first < 0) {
+                    Text(stringResource(R.string.calculating))
+                } else {
+                    Text(
+                        stringResource(
+                            R.string.setting_remote_tts_cache_stats,
+                            stats.first,
+                            sizeLabel,
+                        )
+                    )
+                }
+            },
+        )
+
+        val cleared = clearedCount
+        if (cleared != null) {
+            item(
+                headlineContent = {
+                    Text(
+                        text = stringResource(R.string.setting_remote_tts_cache_cleared, cleared),
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                },
+            )
+        }
+        val error = clearError
+        if (error != null) {
+            item(headlineContent = { Text(text = error, color = MaterialTheme.colorScheme.error) })
+        }
+
+        formItem {
+            Button(
+                onClick = { pendingClear = true },
+                // 统计中（first < 0）和空目录都不必弹窗；清空进行中禁用，避免重复提交
+                enabled = !clearing && stats.first > 0,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                if (clearing) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                }
+                Text(stringResource(R.string.setting_remote_tts_cache_clear))
+            }
+        }
+    }
+
+    // 清空前的二次确认：只置 pendingClear，确认后才真正删除（与删除音色同一套三段式）
+    if (pendingClear) {
+        AlertDialog(
+            onDismissRequest = { pendingClear = false },
+            title = { Text(stringResource(R.string.setting_remote_tts_cache_clear)) },
+            text = { Text(stringResource(R.string.setting_remote_tts_cache_clear_confirm, sizeLabel)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingClear = false
+                        scope.launch {
+                            clearing = true
+                            clearError = null
+                            clearedCount = null
+                            try {
+                                clearedCount = withContext(Dispatchers.IO) {
+                                    TtsAudioCache.clear(providerId)
+                                }
+                                // 自增刷新计数，让统计行立刻回到「0 条 · 0 B」
+                                refreshTick++
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                clearError = e.readableMessage()
+                            } finally {
+                                clearing = false
+                            }
+                        }
+                    }
+                ) {
+                    Text(stringResource(R.string.delete))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingClear = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
     }
 }
 

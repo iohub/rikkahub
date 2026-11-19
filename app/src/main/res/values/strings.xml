@@ -2117,4 +2117,11 @@
   <string name="setting_remote_tts_synthesis_voice_missing">Synthesis failed: voice “%1$s” may not exist. Pick another one from the voice list, or leave it empty to use the server default. Server said: %2$s</string>
   <string name="setting_remote_tts_synthesis_failed">Synthesis failed: check that the service address and model are available. Server said: %1$s</string>
   <string name="setting_remote_tts_clone_model_unsupported">The current model (%1$s) does not support cloning; start the server with a base-type model.</string>
+  <string name="setting_remote_tts_group_cache">Audio cache</string>
+  <string name="setting_remote_tts_cache_enabled">Enable cache</string>
+  <string name="setting_remote_tts_cache_enabled_desc">Synthesized audio is encrypted on this device and reused when the same text is spoken again</string>
+  <string name="setting_remote_tts_cache_stats">%1$d items · %2$s</string>
+  <string name="setting_remote_tts_cache_clear">Clear cache</string>
+  <string name="setting_remote_tts_cache_clear_confirm">Delete %1$s of cached audio on this device? Cached entries can be regenerated, but the next playback will request the server again.</string>
+  <string name="setting_remote_tts_cache_cleared">Cleared %1$d cached items</string>
 </resources>

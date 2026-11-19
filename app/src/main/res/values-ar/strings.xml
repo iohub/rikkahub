@@ -2038,4 +2038,11 @@
   <string name="setting_remote_tts_synthesis_voice_missing">فشل التوليد: قد لا يكون الصوت «%1$s» موجودًا. اختر صوتًا آخر من القائمة أو اتركه فارغًا لاستخدام الصوت الافتراضي للخادم (استجابة الخادم: %2$s)</string>
   <string name="setting_remote_tts_synthesis_failed">فشل التوليد: تحقق من توفر عنوان الخدمة والطراز (استجابة الخادم: %1$s)</string>
   <string name="setting_remote_tts_clone_model_unsupported">الطراز الحالي (%1$s) لا يدعم الاستنساخ، شغّل الخدمة بطراز من نوع base.</string>
+  <string name="setting_remote_tts_group_cache">ذاكرة التخزين المؤقت للصوت</string>
+  <string name="setting_remote_tts_cache_enabled">تفعيل التخزين المؤقت</string>
+  <string name="setting_remote_tts_cache_enabled_desc">يُحفظ الصوت المُولَّد مشفَّرًا على هذا الجهاز ويُعاد استخدامه عند قراءة النص نفسه مرة أخرى دون طلب الخادم</string>
+  <string name="setting_remote_tts_cache_stats">%1$d عنصرًا · %2$s</string>
+  <string name="setting_remote_tts_cache_clear">مسح ذاكرة التخزين المؤقت</string>
+  <string name="setting_remote_tts_cache_clear_confirm">حذف %1$s من الصوت المخزَّن على هذا الجهاز؟ يمكن إعادة توليد الذاكرة المؤقتة، لكن التشغيل التالي سيطلب من الخادم من جديد.</string>
+  <string name="setting_remote_tts_cache_cleared">تم مسح %1$d عنصرًا من الذاكرة المؤقتة</string>
 </resources>

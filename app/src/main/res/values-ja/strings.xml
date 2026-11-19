@@ -2040,4 +2040,11 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="setting_remote_tts_synthesis_voice_missing">合成に失敗しました：音色「%1$s」が存在しない可能性があります。音色リストから選び直すか、空欄にしてサーバーの既定音色を使用してください（サーバー応答：%2$s）</string>
   <string name="setting_remote_tts_synthesis_failed">合成に失敗しました：サービスアドレスとモデルが利用可能か確認してください（サーバー応答：%1$s）</string>
   <string name="setting_remote_tts_clone_model_unsupported">現在のモデル（%1$s）はクローンに対応していません。base タイプのモデルでサービスを起動してください。</string>
+  <string name="setting_remote_tts_group_cache">音声キャッシュ</string>
+  <string name="setting_remote_tts_cache_enabled">キャッシュを有効化</string>
+  <string name="setting_remote_tts_cache_enabled_desc">合成結果はこの端末に暗号化して保存され、同じテキストを再度読み上げるときは再利用され、サーバーへ再リクエストしません</string>
+  <string name="setting_remote_tts_cache_stats">%1$d 件 · %2$s</string>
+  <string name="setting_remote_tts_cache_clear">キャッシュを削除</string>
+  <string name="setting_remote_tts_cache_clear_confirm">この端末の %1$s のキャッシュ音声を削除しますか？キャッシュは再生成できますが、次回の再生時にサーバーへ再リクエストします。</string>
+  <string name="setting_remote_tts_cache_cleared">%1$d 件のキャッシュを削除しました</string>
 </resources>

@@ -2038,4 +2038,11 @@
   <string name="setting_remote_tts_synthesis_voice_missing">Synthese fehlgeschlagen: Die Stimme „%1$s“ existiert vermutlich nicht. Wähle in der Stimmenliste eine andere oder lasse das Feld leer, um die Standardstimme des Servers zu nutzen (Server: %2$s)</string>
   <string name="setting_remote_tts_synthesis_failed">Synthese fehlgeschlagen: Prüfe, ob Dienstadresse und Modell verfügbar sind (Server: %1$s)</string>
   <string name="setting_remote_tts_clone_model_unsupported">Das aktuelle Modell (%1$s) unterstützt kein Klonen; starte den Dienst mit einem Modell vom Typ base.</string>
+  <string name="setting_remote_tts_group_cache">Audio-Cache</string>
+  <string name="setting_remote_tts_cache_enabled">Cache aktivieren</string>
+  <string name="setting_remote_tts_cache_enabled_desc">Synthetisiertes Audio wird auf diesem Gerät verschlüsselt gespeichert und wiederverwendet, wenn derselbe Text erneut vorgelesen wird, ohne erneute Serveranfrage</string>
+  <string name="setting_remote_tts_cache_stats">%1$d Einträge · %2$s</string>
+  <string name="setting_remote_tts_cache_clear">Cache leeren</string>
+  <string name="setting_remote_tts_cache_clear_confirm">%1$s zwischengespeichertes Audio auf diesem Gerät löschen? Der Cache kann neu erzeugt werden, die nächste Wiedergabe fragt aber wieder den Server an.</string>
+  <string name="setting_remote_tts_cache_cleared">%1$d Cache-Einträge geleert</string>
 </resources>

@@ -2040,4 +2040,11 @@
   <string name="setting_remote_tts_synthesis_voice_missing">Синтез не удался: голос «%1$s», вероятно, не существует. Выберите другой голос в списке или оставьте поле пустым, чтобы использовать голос сервера по умолчанию (ответ сервера: %2$s)</string>
   <string name="setting_remote_tts_synthesis_failed">Синтез не удался: проверьте доступность адреса сервиса и модели (ответ сервера: %1$s)</string>
   <string name="setting_remote_tts_clone_model_unsupported">Текущая модель (%1$s) не поддерживает клонирование; запустите сервис с моделью типа base.</string>
+  <string name="setting_remote_tts_group_cache">Кэш аудио</string>
+  <string name="setting_remote_tts_cache_enabled">Включить кэш</string>
+  <string name="setting_remote_tts_cache_enabled_desc">Результат синтеза шифруется и сохраняется на устройстве и используется повторно, когда тот же текст озвучивается снова, без запроса к серверу</string>
+  <string name="setting_remote_tts_cache_stats">%1$d шт. · %2$s</string>
+  <string name="setting_remote_tts_cache_clear">Очистить кэш</string>
+  <string name="setting_remote_tts_cache_clear_confirm">Удалить %1$s кэшированного аудио на этом устройстве? Кэш можно создать заново, но при следующем воспроизведении снова будет запрос к серверу.</string>
+  <string name="setting_remote_tts_cache_cleared">Очищено записей: %1$d</string>
 </resources>
