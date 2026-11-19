@@ -6,6 +6,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import me.rerere.tts.model.AudioChunk
@@ -27,8 +28,9 @@ private val JSON_MEDIA_TYPE = "application/json".toMediaType()
  * 自建 OpenAI 兼容 TTS 服务适配器 (qwen-talker 的 tts-server)。
  *
  * [POST {baseUrl}/audio/speech], baseUrl 约定已包含 `/v1`; apiKey 为空时不发 Authorization 头。
- * 请求体在 OpenAI 标准字段 (model/input/voice/response_format) 之外支持 language
- * (覆盖服务端默认语言)、temperature 与 seed, 空字符串字段一律不下发。
+ * 请求体由 [buildRemoteSpeechRequest] 构建: `input` 与 `response_format` 恒发,
+ * `model` / `voice` / `language` / `instructions` 非空才发, 9 个采样参数非 null 才发
+ * (null = 保留服务端引擎默认值)。
  *
  * 音频内容一次性读完整响应体后作为单个 [AudioChunk] 发出:
  * - response_format = "wav" (或其它非 pcm 格式): 服务端返回完整音频文件, 原样交给播放器;
@@ -54,31 +56,13 @@ class RemoteTTSProvider : TTSProvider<TTSProviderSetting.RemoteTTS> {
         providerSetting: TTSProviderSetting.RemoteTTS,
         request: TTSRequest
     ): Flow<AudioChunk> = flow {
-        val requestBody = buildJsonObject {
-            if (providerSetting.model.isNotBlank()) {
-                put("model", providerSetting.model)
-            }
-            put("input", request.text)
-            if (providerSetting.voice.isNotBlank()) {
-                put("voice", providerSetting.voice)
-            }
-            if (providerSetting.language.isNotBlank()) {
-                put("language", providerSetting.language)
-            }
-            if (providerSetting.responseFormat.isNotBlank()) {
-                put("response_format", providerSetting.responseFormat)
-            }
-            put("temperature", providerSetting.temperature)
-            // 负数表示不指定采样种子
-            if (providerSetting.seed >= 0) {
-                put("seed", providerSetting.seed)
-            }
-        }
+        val requestBody = buildRemoteSpeechRequest(providerSetting, request.text)
 
         Log.i(
             TAG,
             "generateSpeech: model=${providerSetting.model} voice=${providerSetting.voice} " +
                     "language=${providerSetting.language} format=${providerSetting.responseFormat} " +
+                    "instructions=${providerSetting.instructions.isNotBlank()} " +
                     "length=${request.text.length}"
         )
 
@@ -136,9 +120,43 @@ class RemoteTTSProvider : TTSProvider<TTSProviderSetting.RemoteTTS> {
                     "model" to providerSetting.model,
                     "voice" to providerSetting.voice,
                     "language" to providerSetting.language,
+                    "instructions" to providerSetting.instructions,
                     "responseFormat" to providerSetting.responseFormat,
                 )
             )
         )
     }.flowOn(Dispatchers.IO)
+}
+
+/**
+ * 构建 `POST {baseUrl}/audio/speech` 的 JSON 请求体 (纯函数, 便于单测且不发网络)。
+ *
+ * 下发规则严格对齐服务端文档:
+ * - `input` 与 `response_format` 恒发 (`response_format` 为空时回落到 "wav");
+ * - `model` / `voice` / `language` / `instructions` 非空才发;
+ * - 9 个采样参数非 null 才发, key 全部 snake_case; null 表示保留引擎默认值。
+ *   注意: 旧版本用 `seed = -1` 表示"不下发", 迁移后应改用 `seed = null`。
+ */
+internal fun buildRemoteSpeechRequest(
+    setting: TTSProviderSetting.RemoteTTS,
+    input: String,
+): JsonObject = buildJsonObject {
+    put("input", input)
+    // 服务端需要 response_format 决定返回完整 wav 还是 pcm 裸流, 因此恒发
+    put("response_format", setting.responseFormat.ifBlank { "wav" })
+
+    setting.model.takeIf { it.isNotBlank() }?.let { put("model", it) }
+    setting.voice.takeIf { it.isNotBlank() }?.let { put("voice", it) }
+    setting.language.takeIf { it.isNotBlank() }?.let { put("language", it) }
+    setting.instructions.takeIf { it.isNotBlank() }?.let { put("instructions", it) }
+
+    setting.seed?.let { put("seed", it) }
+    setting.maxNewTokens?.let { put("max_new_tokens", it) }
+    setting.temperature?.let { put("temperature", it) }
+    setting.topK?.let { put("top_k", it) }
+    setting.topP?.let { put("top_p", it) }
+    setting.repetitionPenalty?.let { put("repetition_penalty", it) }
+    setting.subtalkerTemperature?.let { put("subtalker_temperature", it) }
+    setting.subtalkerTopK?.let { put("subtalker_top_k", it) }
+    setting.subtalkerTopP?.let { put("subtalker_top_p", it) }
 }

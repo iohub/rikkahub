@@ -1,0 +1,1758 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Qwen TTS 控制台</title>
+<style>
+/* ===================== 主题变量 ===================== */
+*, *::before, *::after { box-sizing: border-box; }
+
+:root {
+  color-scheme: light dark;
+  --bg: #f5f6f8;
+  --panel: #ffffff;
+  --input: #fbfbfd;
+  --border: #dfe3e8;
+  --border-strong: #c6ccd4;
+  --text: #191c20;
+  --muted: #6a7280;
+  --accent: #2f6fed;
+  --accent-ink: #ffffff;
+  --accent-soft: #e9f0ff;
+  --ok: #15803d;
+  --ok-soft: #e8f7ee;
+  --warn: #93610a;
+  --warn-soft: #fdf6e3;
+  --err: #b3261e;
+  --err-soft: #fdecea;
+  --radius: 8px;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", "PingFang SC",
+          "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1115;
+    --panel: #161a20;
+    --input: #111519;
+    --border: #272e38;
+    --border-strong: #3a434f;
+    --text: #e7eaee;
+    --muted: #98a2b0;
+    --accent: #6f9dff;
+    --accent-ink: #0b1020;
+    --accent-soft: #1c2740;
+    --ok: #5ed08a;
+    --ok-soft: #12271b;
+    --warn: #e2b53c;
+    --warn-soft: #2a2313;
+    --err: #f3847c;
+    --err-soft: #2b1614;
+  }
+}
+
+/* ===================== 基础排版 ===================== */
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+h1, h2, h3 { margin: 0; font-weight: 600; }
+p { margin: 0; }
+button, input, select, textarea { font: inherit; color: inherit; }
+a { color: var(--accent); }
+
+input[type="text"], input[type="number"], select, textarea {
+  background: var(--input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  outline: none;
+  transition: border-color .12s ease;
+}
+input[type="text"]:focus, input[type="number"]:focus, select:focus, textarea:focus {
+  border-color: var(--accent);
+}
+textarea { resize: vertical; width: 100%; line-height: 1.6; }
+input[type="range"] { accent-color: var(--accent); min-width: 0; }
+input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
+input[type="file"] { font-size: 12px; color: var(--muted); }
+
+/* ===================== 顶部栏 ===================== */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px 20px;
+  padding: 10px 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+.brand h1 { font-size: 15px; letter-spacing: .2px; }
+.brand p { margin-top: 1px; font-size: 11.5px; color: var(--muted); }
+.conn {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  font-size: 12px;
+}
+.url-field { display: flex; align-items: center; gap: 6px; }
+.url-field > span { color: var(--muted); white-space: nowrap; }
+.url-field input { width: 210px; font-family: var(--mono); font-size: 12px; }
+.status { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--border-strong);
+  flex: none;
+}
+.dot[data-state="ok"] { background: var(--ok); box-shadow: 0 0 0 3px var(--ok-soft); }
+.dot[data-state="fail"] { background: var(--err); box-shadow: 0 0 0 3px var(--err-soft); }
+.dot[data-state="checking"] { background: var(--warn); animation: pulse 1s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+.status-text[data-state="ok"] { color: var(--ok); }
+.status-text[data-state="fail"] { color: var(--err); }
+.model { color: var(--muted); white-space: nowrap; }
+.model b { color: var(--text); font-family: var(--mono); font-weight: 500; }
+
+/* ===================== 布局 ===================== */
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 400px;
+  gap: 14px;
+  align-items: start;
+  max-width: 1480px;
+  margin: 0 auto;
+  padding: 14px 16px 40px;
+}
+.col-right { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+
+@media (max-width: 899px) {
+  .layout { grid-template-columns: minmax(0, 1fr); }
+  .url-field input { width: 100%; }
+  .url-field { flex: 1 1 240px; }
+}
+
+/* ===================== 按钮 ===================== */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid var(--border-strong);
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: background .12s ease, border-color .12s ease, opacity .12s ease;
+  white-space: nowrap;
+}
+.btn:hover { background: var(--accent-soft); border-color: var(--accent); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 500;
+}
+.btn-primary:hover { filter: brightness(1.06); background: var(--accent); }
+.btn-stop { background: var(--err); border-color: var(--err); color: #fff; }
+.btn-stop:hover { background: var(--err); filter: brightness(1.06); }
+.btn-lg { padding: 9px 26px; font-size: 14px; }
+.btn-sm { padding: 3px 9px; font-size: 12px; }
+.btn-ghost { background: transparent; }
+
+/* ===================== 左侧合成区 ===================== */
+.field-label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; }
+#textInput {
+  min-height: 260px;
+  font-size: 14px;
+  padding: 10px 12px;
+  background: var(--input);
+}
+.row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.row.between { justify-content: space-between; }
+.row.end { justify-content: flex-end; }
+.char-count { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.hint-inline { font-size: 11.5px; color: var(--muted); }
+.warn-line {
+  margin-top: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--warn);
+  border-radius: 6px;
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-size: 12.5px;
+}
+.gen-row { margin-top: 12px; }
+#genState { font-size: 12px; color: var(--muted); }
+
+/* 消息条 */
+.msg {
+  margin-top: 12px;
+  padding: 8px 11px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  font-size: 13px;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+.msg.ok { background: var(--ok-soft); border-color: var(--ok); color: var(--ok); }
+.msg.warn { background: var(--warn-soft); border-color: var(--warn); color: var(--warn); }
+.msg.err { background: var(--err-soft); border-color: var(--err); color: var(--err); }
+
+/* 播放器 */
+.player { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+.player h2 { font-size: 12px; color: var(--muted); font-weight: 500; margin-bottom: 8px; letter-spacing: .3px; }
+.pcm-stats {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+.meter {
+  margin-top: 8px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+}
+.meter-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--accent);
+  transition: width .15s linear;
+}
+#wavAudio { width: 100%; margin-top: 4px; }
+.dl-row { margin-top: 8px; font-size: 12.5px; }
+
+/* ===================== 右侧分组 ===================== */
+details.group {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0 14px;
+}
+details.group > summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 11px 0;
+  font-size: 13px;
+  font-weight: 600;
+  user-select: none;
+}
+details.group > summary::-webkit-details-marker { display: none; }
+details.group > summary::after { content: "▾"; color: var(--muted); font-size: 11px; }
+details.group[open] > summary::after { content: "▴"; }
+details.group > summary:hover { color: var(--accent); }
+.group-body { padding-bottom: 12px; }
+
+.field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; min-width: 0; }
+.field > label, .field > span.lbl, fieldset legend { font-size: 12px; color: var(--muted); }
+.field input[type="text"], .field select, .field textarea { width: 100%; }
+.note {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--muted);
+  margin: 0 0 10px;
+  padding: 6px 8px;
+  background: var(--bg);
+  border-radius: 6px;
+}
+fieldset.radios { border: 0; padding: 0; margin: 0 0 10px; }
+fieldset.radios legend { padding: 0; margin-bottom: 4px; }
+fieldset.radios label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-right: 14px;
+  font-size: 13px;
+  color: var(--text);
+}
+.mini { font-size: 12px; color: var(--muted); font-weight: 600; margin: 14px 0 6px; }
+
+/* 采样参数行 */
+.param {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr) 86px auto;
+  align-items: center;
+  gap: 6px 8px;
+  padding: 6px 0;
+  border-top: 1px dashed var(--border);
+}
+.param:first-child { border-top: 0; }
+.param.is-off .p-ctl { opacity: .45; }
+.p-head { display: flex; align-items: center; gap: 6px; cursor: pointer; min-width: 0; }
+.p-name {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.p-ctl { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.p-ctl input[type="range"] { flex: 1 1 auto; width: 100%; }
+.p-num {
+  width: 74px;
+  flex: none;
+  padding: 3px 6px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  text-align: right;
+}
+.p-val {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.p-val .is-default { color: var(--muted); }
+.p-val .unit { color: var(--muted); font-size: 10.5px; }
+.badge {
+  display: inline-block;
+  font-size: 10px;
+  line-height: 1.4;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  font-family: var(--sans);
+}
+.p-reset {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.p-reset:hover { border-color: var(--border-strong); color: var(--text); }
+
+@media (max-width: 560px) {
+  .param { grid-template-columns: 1fr auto; }
+  .p-head { grid-column: 1 / -1; }
+  .p-ctl { grid-column: 1 / -1; }
+  .p-val { text-align: left; }
+}
+
+/* 预设 */
+.presets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+
+/* 已注册音色列表 */
+.voice-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.voice-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.voice-list .empty { color: var(--muted); font-family: var(--sans); border-style: dashed; }
+
+/* 历史 */
+.hist-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 300px; overflow: auto; }
+.hist-item {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: baseline;
+  text-align: left;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.hist-item:hover { border-color: var(--accent); background: var(--accent-soft); }
+.hist-time { color: var(--muted); font-family: var(--mono); font-size: 11px; white-space: nowrap; }
+.hist-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hist-voice { color: var(--accent); font-family: var(--mono); font-size: 11px; }
+.muted { color: var(--muted); }
+</style>
+</head>
+<body>
+
+<!-- ===================== 顶部栏 ===================== -->
+<header class="topbar">
+  <div class="brand">
+    <h1>Qwen TTS 控制台</h1>
+    <p>本地 OpenAI 兼容 TTS 服务的精细调参面板 · 零依赖单文件</p>
+  </div>
+  <div class="conn">
+    <label class="url-field">
+      <span>服务地址</span>
+      <input id="serverUrl" type="text" spellcheck="false" autocomplete="off" placeholder="http://127.0.0.1:8080">
+    </label>
+    <button id="refreshBtn" class="btn btn-ghost btn-sm" type="button">刷新</button>
+    <div class="status">
+      <span class="dot" id="statusDot" data-state="idle"></span>
+      <span class="status-text" id="statusText" data-state="idle">未连接</span>
+    </div>
+    <div class="model">模型 <b id="modelName">—</b></div>
+  </div>
+</header>
+
+<main class="layout">
+  <!-- ===================== 左栏：合成 ===================== -->
+  <section class="card" aria-labelledby="synthTitle">
+    <h2 id="synthTitle" class="field-label" style="font-size:12px">合成文本</h2>
+    <label class="field-label" for="textInput" style="position:absolute;left:-9999px">要合成的文本</label>
+    <textarea id="textInput" rows="12" spellcheck="false"
+      placeholder="在此粘贴或输入要合成的文本，可直接粘贴长文。Cmd / Ctrl + Enter 快速生成。"></textarea>
+
+    <div class="row between" style="margin-top:6px">
+      <span class="char-count" id="charCount">0 字</span>
+      <span class="hint-inline">Cmd / Ctrl + Enter 生成</span>
+    </div>
+
+    <p class="warn-line" id="lenWarn" hidden>
+      文本较长，wav 模式可能触及 120s 写超时，建议用流式 pcm。
+    </p>
+
+    <div class="row gen-row">
+      <button id="genBtn" class="btn btn-primary btn-lg" type="button">生成语音</button>
+      <span id="genState"></span>
+    </div>
+
+    <div class="msg" id="msgBox" role="alert" hidden></div>
+
+    <!-- 播放区 -->
+    <div class="player" id="playerArea" hidden>
+      <div id="pcmPlayer" hidden>
+        <h2>流式播放 · pcm · s16le 24000 Hz 单声道</h2>
+        <div class="row between">
+          <span class="pcm-stats" id="pcmStats">已接收 0.0 KB / 约 0.0 秒音频</span>
+          <span class="hint-inline">边生成边播放</span>
+        </div>
+        <div class="meter" title="相对 max_new_tokens 上限的进度">
+          <div class="meter-fill" id="pcmMeter"></div>
+        </div>
+      </div>
+
+      <div id="wavPlayer" hidden>
+        <h2>完整音频 · wav（16-bit）</h2>
+        <audio id="wavAudio" controls preload="metadata"></audio>
+        <div class="dl-row">
+          <a id="wavDownload" href="#" download="speech.wav">下载 .wav</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 右栏：参数面板 ===================== -->
+  <aside class="col-right">
+
+    <!-- 1. 音色与语言 -->
+    <details class="group" open>
+      <summary>音色与语言</summary>
+      <div class="group-body">
+        <div class="field">
+          <label for="voiceSel">voice 音色</label>
+          <select id="voiceSel">
+            <option value="">（不指定）</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="langSel">language 语言标签</label>
+          <select id="langSel"></select>
+        </div>
+        <div class="field" id="customLangRow" hidden>
+          <label for="customLang">自定义语言标签</label>
+          <input id="customLang" type="text" spellcheck="false" placeholder="例如 Chinese">
+        </div>
+        <div class="field">
+          <label for="instructions">instructions 风格指令</label>
+          <textarea id="instructions" rows="2" spellcheck="false"
+            placeholder="风格指令：VoiceDesign 模型必填，其他模型可选。例如「温柔、语速偏慢」。"></textarea>
+        </div>
+      </div>
+    </details>
+
+    <!-- 2. 输出格式 -->
+    <details class="group" open>
+      <summary>输出格式</summary>
+      <div class="group-body">
+        <fieldset class="radios">
+          <legend>response_format</legend>
+          <label><input type="radio" name="format" value="pcm" checked> pcm（流式播放）</label>
+          <label><input type="radio" name="format" value="wav"> wav（整句返回）</label>
+        </fieldset>
+        <p class="note" style="margin-bottom:0">
+          pcm 边生成边播放，长文本更安全；wav 一次性返回完整文件，合成耗时超过服务端 120s 写超时可能断连。
+        </p>
+      </div>
+    </details>
+
+    <!-- 3. 采样参数 -->
+    <details class="group" open>
+      <summary>采样参数（精细控制）</summary>
+      <div class="group-body">
+        <p class="note">
+          只有勾选了左侧复选框的参数才会写入请求 JSON；未勾选 = 不发送 = 保留引擎默认值。
+        </p>
+        <div id="paramList"></div>
+        <div class="presets">
+          <button class="btn btn-sm" type="button" data-preset="default">全部默认</button>
+          <button class="btn btn-sm" type="button" data-preset="greedy">贪心</button>
+          <button class="btn btn-sm" type="button" data-preset="stable">稳定</button>
+          <button class="btn btn-sm" type="button" data-preset="creative">创意</button>
+        </div>
+      </div>
+    </details>
+
+    <!-- 4. 克隆音色注册 -->
+    <details class="group" id="cloneGroup">
+      <summary>克隆音色注册</summary>
+      <div class="group-body">
+        <p class="note">
+          仅 base 类型模型支持克隆；customvoice / voicedesign 模型会返回 400。
+          注册成功后音色会出现在「已注册音色」分组里。
+        </p>
+        <div class="field">
+          <label for="cloneName">name 音色名称（必填）</label>
+          <input id="cloneName" type="text" spellcheck="false" placeholder="例如 myvoice">
+        </div>
+        <div class="field">
+          <label for="cloneRef">ref_text 参考文本（可选）</label>
+          <textarea id="cloneRef" rows="2" spellcheck="false"
+            placeholder="填写参考文本可启用 ICL 克隆，效果更好"></textarea>
+        </div>
+        <fieldset class="radios">
+          <legend>上传方式</legend>
+          <label><input type="radio" name="cloneMode" value="wav" checked> WAV 文件</label>
+          <label><input type="radio" name="cloneMode" value="latents"> .spk + .rvq</label>
+        </fieldset>
+        <div class="field" id="cloneWavRow">
+          <label for="cloneWav">参考音频 .wav</label>
+          <input id="cloneWav" type="file" accept=".wav,audio/wav,audio/x-wav">
+        </div>
+        <div id="cloneLatentRows" hidden>
+          <div class="field">
+            <label for="cloneSpk">.spk 文件</label>
+            <input id="cloneSpk" type="file" accept=".spk">
+          </div>
+          <div class="field">
+            <label for="cloneRvq">.rvq 文件</label>
+            <input id="cloneRvq" type="file" accept=".rvq">
+          </div>
+        </div>
+        <button id="cloneBtn" class="btn btn-primary" type="button">注册</button>
+        <div class="msg" id="cloneMsg" role="alert" hidden></div>
+
+        <h3 class="mini">已注册音色</h3>
+        <ul class="voice-list" id="registeredList">
+          <li class="empty">暂无</li>
+        </ul>
+      </div>
+    </details>
+
+    <!-- 5. 历史记录 -->
+    <details class="group" id="histGroup">
+      <summary>历史记录</summary>
+      <div class="group-body">
+        <ul class="hist-list" id="histList">
+          <li class="muted" style="font-size:12px;padding:4px 2px">暂无记录</li>
+        </ul>
+        <div class="row end" style="margin-top:8px">
+          <button id="clearHistory" class="btn btn-sm" type="button">清空历史</button>
+        </div>
+      </div>
+    </details>
+
+  </aside>
+</main>
+
+<script>
+'use strict';
+
+// ================================================================
+// 常量
+// ================================================================
+const DEFAULT_SERVER = 'http://127.0.0.1:8080';
+const SAMPLE_RATE = 24000;       // 服务端 pcm：s16le / 24000 Hz / 单声道
+const TOKENS_PER_SEC = 12.5;     // 模型帧率，1 token ≈ 0.08 秒
+const LONG_TEXT_LIMIT = 2000;    // 超过则提示 wav 写超时风险
+const HISTORY_LIMIT = 20;
+const MAX_UPLOAD_BYTES = 20 * 1024 * 1024; // base64 会膨胀 4/3，留出 32MB 上限余量
+
+const LS = {
+  url: 'qwentts.serverUrl',
+  form: 'qwentts.form',
+  history: 'qwentts.history',
+};
+
+const LANGUAGES = [
+  'auto', 'Chinese', 'English', 'Japanese', 'Korean',
+  'German', 'French', 'Russian', 'Portuguese', 'Spanish', 'Italian',
+];
+const CUSTOM_LANG = '__custom__';
+
+// ================================================================
+// DOM 引用
+// ================================================================
+const $ = (sel, root = document) => root.querySelector(sel);
+const $$ = (sel, root = document) => Array.prototype.slice.call(root.querySelectorAll(sel));
+
+const dom = {
+  // 顶部
+  serverUrl: $('#serverUrl'),
+  refreshBtn: $('#refreshBtn'),
+  statusDot: $('#statusDot'),
+  statusText: $('#statusText'),
+  modelName: $('#modelName'),
+  // 左栏
+  textInput: $('#textInput'),
+  charCount: $('#charCount'),
+  lenWarn: $('#lenWarn'),
+  genBtn: $('#genBtn'),
+  genState: $('#genState'),
+  msgBox: $('#msgBox'),
+  playerArea: $('#playerArea'),
+  pcmPlayer: $('#pcmPlayer'),
+  pcmStats: $('#pcmStats'),
+  pcmMeter: $('#pcmMeter'),
+  wavPlayer: $('#wavPlayer'),
+  wavAudio: $('#wavAudio'),
+  wavDownload: $('#wavDownload'),
+  // 右栏
+  voiceSel: $('#voiceSel'),
+  langSel: $('#langSel'),
+  customLangRow: $('#customLangRow'),
+  customLang: $('#customLang'),
+  instructions: $('#instructions'),
+  paramList: $('#paramList'),
+  // 克隆
+  cloneName: $('#cloneName'),
+  cloneRef: $('#cloneRef'),
+  cloneWavRow: $('#cloneWavRow'),
+  cloneWav: $('#cloneWav'),
+  cloneLatentRows: $('#cloneLatentRows'),
+  cloneSpk: $('#cloneSpk'),
+  cloneRvq: $('#cloneRvq'),
+  cloneBtn: $('#cloneBtn'),
+  cloneMsg: $('#cloneMsg'),
+  registeredList: $('#registeredList'),
+  // 历史
+  histList: $('#histList'),
+  clearHistory: $('#clearHistory'),
+};
+
+// ================================================================
+// 运行时状态
+// ================================================================
+let audioCtx = null;          // 惰性创建，必须在用户手势内
+let abortController = null;
+let activeSources = new Set(); // 已排程的 AudioBufferSourceNode
+let nextTime = 0;              // 下一个 chunk 的排程时间点
+let isGenerating = false;
+let aborted = false;
+let wavUrl = null;
+let paramRows = Object.create(null);
+let savedForm = null;
+let voiceInitialized = false;
+let voicesCache = [];
+let saveTimer = 0;
+
+// ================================================================
+// 工具函数
+// ================================================================
+function esc(value) {
+  return String(value).replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+}
+
+function pad2(n) {
+  return String(n).padStart(2, '0');
+}
+
+function fmtTime(ts) {
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+// 服务地址（去掉尾部斜杠，输入为空时回落到默认值）
+function baseUrl() {
+  const raw = (dom.serverUrl.value || '').trim() || DEFAULT_SERVER;
+  return raw.replace(/\/+$/, '');
+}
+
+function apiUrl(path) {
+  return baseUrl() + path;
+}
+
+function cloneMsg(kind, text) {
+  dom.cloneMsg.hidden = false;
+  dom.cloneMsg.className = 'msg ' + kind;
+  dom.cloneMsg.textContent = text;
+}
+
+// ================================================================
+// 采样参数定义（顺序即 UI 顺序；def 为未勾选时的引擎默认值展示）
+// ================================================================
+const PARAM_DEFS = [
+  { key: 'seed', kind: 'int', label: 'seed', value: -1, def: '-1（随机）',
+    hint: '随机种子；-1 = 每次随机，其他值可复现' },
+  { key: 'max_new_tokens', kind: 'int+range', label: 'max_new_tokens', value: 2048,
+    min: 16, max: 4096, step: 1, def: '2048（≈163.8 秒）', hint: '最大生成音频帧数，约 12.5 帧/秒' },
+  { key: 'temperature', kind: 'range', label: 'temperature', value: 0.9,
+    min: 0, max: 2, step: 0.05, digits: 2, def: '0.9', greedyAtZero: true,
+    hint: '主 Talker 温度；0 = 贪心解码' },
+  { key: 'top_k', kind: 'range', label: 'top_k', value: 50,
+    min: 0, max: 200, step: 1, digits: 0, def: '50', hint: '0 = 关闭该过滤器' },
+  { key: 'top_p', kind: 'range', label: 'top_p', value: 1.0,
+    min: 0.05, max: 1, step: 0.01, digits: 2, def: '1.0', hint: '取值 (0, 1]，0 不合法' },
+  { key: 'repetition_penalty', kind: 'range', label: 'repetition_penalty', value: 1.05,
+    min: 1, max: 2, step: 0.01, digits: 2, def: '1.05', hint: '重复惩罚，必须 > 0' },
+  { key: 'subtalker_temperature', kind: 'range', label: 'subtalker_temperature', value: 0.9,
+    min: 0, max: 2, step: 0.05, digits: 2, def: '0.9', greedyAtZero: true,
+    hint: '副 Talker 温度；0 = 贪心解码' },
+  { key: 'subtalker_top_k', kind: 'range', label: 'subtalker_top_k', value: 50,
+    min: 0, max: 200, step: 1, digits: 0, def: '50', hint: '0 = 关闭该过滤器' },
+  { key: 'subtalker_top_p', kind: 'range', label: 'subtalker_top_p', value: 1.0,
+    min: 0.05, max: 1, step: 0.01, digits: 2, def: '1.0', hint: '取值 (0, 1]，0 不合法' },
+];
+
+const PARAM_BY_KEY = Object.create(null);
+for (const def of PARAM_DEFS) {
+  PARAM_BY_KEY[def.key] = def;
+}
+
+// ================================================================
+// 采样参数面板（勾选才发送）
+// ================================================================
+function controlHtml(def) {
+  const step = def.step != null ? def.step : 1;
+  const named = `aria-labelledby="name_${def.key}"`;
+  const num = `<input class="p-num" type="number" id="num_${def.key}" value="${def.value}"` +
+    (def.min != null ? ` min="${def.min}" max="${def.max}"` : '') +
+    ` step="${step}" ${named}>`;
+  if (def.kind === 'int') {
+    return num;
+  }
+  const range = `<input class="p-range" type="range" id="range_${def.key}"` +
+    ` min="${def.min}" max="${def.max}" step="${step}" value="${def.value}" ${named}>`;
+  return range + num;
+}
+
+function buildParams() {
+  dom.paramList.innerHTML = PARAM_DEFS.map((def) => {
+    const checkId = 'en_' + def.key;
+    return `
+      <div class="param" data-key="${def.key}">
+        <label class="p-head" for="${checkId}" title="${esc(def.hint || '')}">
+          <input type="checkbox" id="${checkId}">
+          <span class="p-name" id="name_${def.key}">${def.label}</span>
+        </label>
+        <div class="p-ctl">${controlHtml(def)}</div>
+        <span class="p-val" data-role="val"></span>
+        <button type="button" class="p-reset" data-key="${def.key}"
+                title="取消勾选并恢复引擎默认值">重置</button>
+      </div>`;
+  }).join('');
+
+  for (const def of PARAM_DEFS) {
+    const row = dom.paramList.querySelector(`.param[data-key="${def.key}"]`);
+    const refs = {
+      row,
+      en: $('#en_' + def.key, row),
+      range: $('#range_' + def.key, row),
+      num: $('#num_' + def.key, row),
+      val: row.querySelector('[data-role="val"]'),
+      reset: row.querySelector('.p-reset'),
+    };
+    paramRows[def.key] = refs;
+
+    refs.en.addEventListener('change', () => {
+      syncParam(def);
+      saveFormSoon();
+    });
+
+    if (refs.range) {
+      refs.range.addEventListener('input', () => {
+        refs.num.value = refs.range.value;
+        syncParam(def);
+        saveFormSoon();
+      });
+    }
+
+    refs.num.addEventListener('input', () => {
+      if (refs.range) {
+        const v = parseFloat(refs.num.value);
+        if (Number.isFinite(v)) {
+          refs.range.value = String(Math.min(def.max, Math.max(def.min, v)));
+        }
+      }
+      syncParam(def);
+      saveFormSoon();
+    });
+
+    refs.reset.addEventListener('click', () => {
+      refs.en.checked = false;
+      refs.range && (refs.range.value = String(def.value));
+      refs.num.value = String(def.value);
+      syncParam(def);
+      saveFormSoon();
+    });
+
+    syncParam(def);
+  }
+}
+
+// 读取当前控件数值（输入非法时回落到定义值）
+function currentNumber(def) {
+  const refs = paramRows[def.key];
+  const v = parseFloat(refs.num.value);
+  return Number.isFinite(v) ? v : def.value;
+}
+
+function syncParam(def) {
+  const refs = paramRows[def.key];
+  const on = refs.en.checked;
+  refs.row.classList.toggle('is-off', !on);
+
+  let html;
+  if (!on) {
+    // 未勾选：显示引擎默认值（不会写入请求）
+    html = `<span class="is-default">${def.def}</span>`;
+  } else {
+    const v = currentNumber(def);
+    if (def.key === 'max_new_tokens') {
+      html = `<b>${Math.round(v)}</b> <span class="unit">≈ ${(v / TOKENS_PER_SEC).toFixed(1)} 秒</span>`;
+    } else if (def.kind === 'range') {
+      const text = Number(v).toFixed(def.digits);
+      html = def.greedyAtZero && Number(v) === 0
+        ? `<b>${text}</b> <span class="badge">贪心</span>`
+        : `<b>${text}</b>`;
+    } else {
+      html = `<b>${Math.round(v)}</b>`;
+    }
+  }
+  refs.val.innerHTML = html;
+}
+
+// 程序化设置单个参数
+function setParamValue(key, on, value) {
+  const refs = paramRows[key];
+  const def = PARAM_BY_KEY[key];
+  if (!refs) return;
+  refs.en.checked = !!on;
+  if (refs.range) refs.range.value = String(value);
+  refs.num.value = String(value);
+  syncParam(def);
+}
+
+// ================================================================
+// 预设
+// ================================================================
+function applyPreset(name) {
+  for (const def of PARAM_DEFS) {
+    setParamValue(def.key, false, def.value);
+  }
+  if (name === 'greedy') {
+    setParamValue('temperature', true, 0);
+    setParamValue('subtalker_temperature', true, 0);
+  } else if (name === 'stable') {
+    setParamValue('temperature', true, 0.6);
+    setParamValue('top_k', true, 20);
+    setParamValue('top_p', true, 0.9);
+    setParamValue('repetition_penalty', true, 1.1);
+    setParamValue('subtalker_temperature', true, 0.6);
+    setParamValue('subtalker_top_k', true, 20);
+  } else if (name === 'creative') {
+    setParamValue('temperature', true, 1.1);
+    setParamValue('top_p', true, 0.95);
+    setParamValue('repetition_penalty', true, 1.02);
+  }
+  saveFormSoon();
+}
+
+// ================================================================
+// 表单快照 / 持久化
+// ================================================================
+function currentFormat() {
+  const checked = document.querySelector('input[name="format"]:checked');
+  return checked ? checked.value : 'pcm';
+}
+
+function currentLanguageValue() {
+  const v = dom.langSel.value;
+  if (v === CUSTOM_LANG) return dom.customLang.value.trim();
+  return v;
+}
+
+function snapshotForm() {
+  const enabled = {};
+  const values = {};
+  for (const def of PARAM_DEFS) {
+    const refs = paramRows[def.key];
+    enabled[def.key] = refs.en.checked;
+    values[def.key] = refs.num.value;
+  }
+  return {
+    text: dom.textInput.value,
+    voice: dom.voiceSel.value,
+    lang: dom.langSel.value,
+    customLang: dom.customLang.value,
+    instructions: dom.instructions.value,
+    format: currentFormat(),
+    enabled,
+    values,
+  };
+}
+
+function saveFormSoon() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveForm, 300);
+}
+
+function saveForm() {
+  try {
+    localStorage.setItem(LS.form, JSON.stringify(snapshotForm()));
+  } catch (e) {
+    /* 隐私模式下 localStorage 可能不可写，忽略 */
+  }
+}
+
+function applyForm(form) {
+  if (!form) return;
+
+  if (typeof form.text === 'string') dom.textInput.value = form.text;
+  if (typeof form.instructions === 'string') dom.instructions.value = form.instructions;
+  if (typeof form.customLang === 'string') dom.customLang.value = form.customLang;
+
+  if (typeof form.lang === 'string') {
+    dom.langSel.value = form.lang;
+    if (dom.langSel.value !== form.lang) dom.langSel.value = ''; // 选项不存在则回落到服务端默认
+  }
+  dom.customLangRow.hidden = dom.langSel.value !== CUSTOM_LANG;
+
+  const radios = $$('input[name="format"]');
+  for (const r of radios) r.checked = r.value === (form.format === 'wav' ? 'wav' : 'pcm');
+
+  for (const def of PARAM_DEFS) {
+    const enabled = !!(form.enabled && form.enabled[def.key]);
+    const raw = form.values ? form.values[def.key] : undefined;
+    const value = raw != null && raw !== '' ? raw : def.value;
+    setParamValue(def.key, enabled, value);
+  }
+
+  updateCount();
+}
+
+// ================================================================
+// 请求体组装（只发送已勾选的采样参数）
+// ================================================================
+function readParamValue(def) {
+  const refs = paramRows[def.key];
+  const raw = refs.num.value;
+
+  if (def.kind === 'int' || def.kind === 'int+range') {
+    const n = parseInt(raw, 10);
+    if (!Number.isFinite(n)) {
+      throw new Error(`参数 ${def.label} 需要一个整数`);
+    }
+    if (def.min != null) {
+      return Math.min(def.max, Math.max(def.min, n));
+    }
+    return n;
+  }
+
+  const v = parseFloat(raw);
+  if (!Number.isFinite(v)) {
+    throw new Error(`参数 ${def.label} 需要一个数字`);
+  }
+  // 夹到 UI 声明的合法区间：top_p ∈ (0,1]，temperature ≥ 0 …
+  const clamped = Math.min(def.max, Math.max(def.min, v));
+  return Number(clamped.toFixed(4));
+}
+
+function buildPayload() {
+  const payload = {
+    input: dom.textInput.value,
+    response_format: currentFormat(),
+  };
+
+  const voice = dom.voiceSel.value;
+  if (voice) payload.voice = voice;
+
+  const lang = currentLanguageValue();
+  if (lang) payload.language = lang;
+
+  const instructions = dom.instructions.value.trim();
+  if (instructions) payload.instructions = instructions;
+
+  // 关键语义：未勾选 = 不发送 = 服务端保留引擎默认值
+  for (const def of PARAM_DEFS) {
+    if (!paramRows[def.key].en.checked) continue;
+    payload[def.key] = readParamValue(def);
+  }
+
+  return payload;
+}
+
+// ================================================================
+// 字数统计
+// ================================================================
+function updateCount() {
+  const n = dom.textInput.value.length;
+  dom.charCount.textContent = n.toLocaleString('zh-CN') + ' 字';
+  dom.lenWarn.hidden = n <= LONG_TEXT_LIMIT;
+}
+
+// ================================================================
+// 消息条 / 生成状态
+// ================================================================
+function showMsg(kind, text) {
+  dom.msgBox.hidden = false;
+  dom.msgBox.className = 'msg ' + kind;
+  dom.msgBox.textContent = text;
+}
+
+function clearMsg() {
+  dom.msgBox.hidden = true;
+  dom.msgBox.textContent = '';
+}
+
+function setGenerating(on) {
+  isGenerating = on;
+  dom.genBtn.textContent = on ? '停止' : '生成语音';
+  dom.genBtn.classList.toggle('btn-stop', on);
+  dom.genBtn.classList.toggle('btn-primary', !on);
+  dom.genState.textContent = on ? '生成中… 点击「停止」中断' : '';
+}
+
+function resetPlayer() {
+  dom.playerArea.hidden = true;
+  dom.pcmPlayer.hidden = true;
+  dom.wavPlayer.hidden = true;
+  dom.pcmStats.textContent = '已接收 0.0 KB / 约 0.0 秒音频';
+  dom.pcmMeter.style.width = '0%';
+  dom.wavAudio.pause();
+  dom.wavAudio.removeAttribute('src');
+  dom.wavDownload.removeAttribute('href');
+  if (wavUrl) {
+    URL.revokeObjectURL(wavUrl);
+    wavUrl = null;
+  }
+}
+
+// ================================================================
+// PCM 流式播放
+// ================================================================
+const pcmStat = { bytes: 0, samples: 0 };
+
+// 必须在用户手势内调用：惰性创建 AudioContext 并 resume
+async function ensureAudioContext() {
+  if (!audioCtx) {
+    const Ctor = window.AudioContext || window.webkitAudioContext;
+    if (!Ctor) {
+      throw new Error('当前浏览器不支持 Web Audio API，无法流式播放 pcm，请改用 wav 模式。');
+    }
+    audioCtx = new Ctor();
+  }
+  if (audioCtx.state === 'suspended') {
+    await audioCtx.resume();
+  }
+  return audioCtx;
+}
+
+function updatePcmStats() {
+  const seconds = pcmStat.samples / SAMPLE_RATE;
+  dom.pcmStats.textContent =
+    `已接收 ${(pcmStat.bytes / 1024).toFixed(1)} KB / 约 ${seconds.toFixed(1)} 秒音频`;
+
+  // 进度条以 max_new_tokens 对应的最长时长为参照
+  const capTokens = paramRows.max_new_tokens.en.checked
+    ? Math.max(1, parseInt(paramRows.max_new_tokens.num.value, 10) || 2048)
+    : 2048;
+  const capSeconds = capTokens / TOKENS_PER_SEC;
+  dom.pcmMeter.style.width = Math.min(100, (seconds / capSeconds) * 100).toFixed(1) + '%';
+}
+
+// 一个 chunk 的 Float32 采样排进播放队列
+function scheduleChunk(f32) {
+  if (!audioCtx) return;
+  // 采样率显式写 24000：AudioContext 会自行重采样到设备采样率
+  const buffer = audioCtx.createBuffer(1, f32.length, SAMPLE_RATE);
+  buffer.copyToChannel(f32, 0);
+
+  const source = audioCtx.createBufferSource();
+  source.buffer = buffer;
+  source.connect(audioCtx.destination);
+
+  const startAt = Math.max(audioCtx.currentTime + 0.02, nextTime);
+  source.start(startAt);
+  nextTime = startAt + buffer.duration;
+
+  activeSources.add(source);
+  source.onended = () => activeSources.delete(source);
+}
+
+function isJsonResponse(res) {
+  return (res.headers.get('content-type') || '').includes('application/json');
+}
+
+// 把服务端的 {"error":{"message":"..."}} 变成可读文案
+async function readErrorMessage(res) {
+  let body = '';
+  try {
+    body = await res.text();
+  } catch (e) {
+    /* 响应体读不出来时只报状态码 */
+  }
+  let detail = '';
+  try {
+    const data = JSON.parse(body);
+    if (data && data.error && data.error.message) detail = String(data.error.message);
+  } catch (e) {
+    /* 不是 JSON，按纯文本处理 */
+  }
+  if (!detail) detail = body.trim().slice(0, 400) || res.statusText || '未知错误';
+  return `HTTP ${res.status}：${detail}`;
+}
+
+async function streamPcm(payload, signal) {
+  const res = await fetch(apiUrl('/v1/audio/speech'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    signal,
+  });
+
+  // 先判响应：错误体是 application/json，不能当音频读
+  if (!res.ok || isJsonResponse(res)) {
+    showMsg('err', await readErrorMessage(res));
+    return false;
+  }
+  if (!res.body) {
+    showMsg('err', '浏览器未提供流式响应体（res.body 为空），请升级浏览器或改用 wav 模式。');
+    return false;
+  }
+
+  const reader = res.body.getReader();
+  let carry = new Uint8Array(0); // 上一 chunk 末尾残留的半个样本（0 或 1 字节）
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value || value.length === 0) continue;
+
+    pcmStat.bytes += value.length;
+
+    // 1) 把 carry 拼到当前 chunk 前面
+    let bytes;
+    if (carry.length) {
+      bytes = new Uint8Array(carry.length + value.length);
+      bytes.set(carry, 0);
+      bytes.set(value, carry.length);
+    } else {
+      bytes = value;
+    }
+
+    // 2) s16le = 2 字节一个样本，截到偶数长度
+    const usable = bytes.length - (bytes.length % 2);
+    carry = bytes.slice(usable);
+    if (usable === 0) continue;
+
+    // 3) DataView 按 little-endian 读 int16 —— 不能用 Int16Array 直接 view，
+    //    因为 chunk 底层 ArrayBuffer 的 byteOffset 不保证 2 字节对齐
+    const frames = usable >> 1;
+    const f32 = new Float32Array(frames);
+    const view = new DataView(bytes.buffer, bytes.byteOffset, usable);
+    for (let i = 0; i < frames; i++) {
+      f32[i] = view.getInt16(i * 2, true) / 32768;
+    }
+
+    pcmStat.samples += frames;
+    scheduleChunk(f32);
+    updatePcmStats();
+  }
+
+  return true;
+}
+
+// ================================================================
+// WAV 整句返回
+// ================================================================
+async function fetchWav(payload, signal) {
+  const res = await fetch(apiUrl('/v1/audio/speech'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    signal,
+  });
+
+  if (!res.ok || isJsonResponse(res)) {
+    showMsg('err', await readErrorMessage(res));
+    return false;
+  }
+
+  const blob = await res.blob();
+  if (wavUrl) URL.revokeObjectURL(wavUrl);
+  wavUrl = URL.createObjectURL(blob);
+
+  dom.wavAudio.src = wavUrl;
+  dom.wavDownload.href = wavUrl;
+  dom.wavDownload.download = `qwentts-${Date.now()}.wav`;
+
+  dom.playerArea.hidden = false;
+  dom.pcmPlayer.hidden = true;
+  dom.wavPlayer.hidden = false;
+
+  showMsg('ok', `wav 合成完成：${(blob.size / 1024).toFixed(1)} KB`);
+  return true;
+}
+
+// ================================================================
+// 一次生成
+// ================================================================
+async function run(payload) {
+  const format = payload.response_format;
+  const ctrl = new AbortController();
+  abortController = ctrl;
+  aborted = false;
+
+  setGenerating(true);
+  resetPlayer();
+
+  if (format === 'pcm') {
+    pcmStat.bytes = 0;
+    pcmStat.samples = 0;
+    nextTime = 0;
+    updatePcmStats();
+    dom.playerArea.hidden = false;
+    dom.pcmPlayer.hidden = false;
+    dom.wavPlayer.hidden = true;
+  }
+
+  try {
+    if (format === 'pcm') {
+      // 用户手势内创建/唤醒 AudioContext
+      await ensureAudioContext();
+      const ok = await streamPcm(payload, ctrl.signal);
+      if (!ok || aborted) return;
+
+      const seconds = pcmStat.samples / SAMPLE_RATE;
+      showMsg('ok',
+        `流式合成结束：${(pcmStat.bytes / 1024).toFixed(1)} KB / 约 ${seconds.toFixed(1)} 秒音频`);
+    } else {
+      if (dom.textInput.value.length > LONG_TEXT_LIMIT) {
+        showMsg('warn', '文本较长，wav 为一次性返回，合成可能超过服务端 120s 写超时；建议改用流式 pcm。');
+      }
+      const ok = await fetchWav(payload, ctrl.signal);
+      if (!ok || aborted) return;
+    }
+
+    pushHistory(payload);
+  } catch (err) {
+    // 主动中断不算错误
+    if (err && err.name === 'AbortError') return;
+    if (aborted || ctrl.signal.aborted) return;
+    showMsg('err', err && err.message ? err.message : String(err));
+  } finally {
+    if (abortController === ctrl) abortController = null;
+    setGenerating(false);
+  }
+}
+
+// 中断：abort fetch + 停掉所有已排程的音频
+function stopEverything() {
+  aborted = true;
+  if (abortController) {
+    try {
+      abortController.abort();
+    } catch (e) {
+      /* ignore */
+    }
+  }
+  for (const source of activeSources) {
+    try {
+      source.stop();
+    } catch (e) {
+      /* 已经结束的 source 再 stop 会抛，忽略 */
+    }
+  }
+  activeSources.clear();
+  nextTime = 0;
+  if (!dom.wavAudio.paused) dom.wavAudio.pause();
+  setGenerating(false);
+  showMsg('warn', '已停止当前生成。');
+}
+
+function onGenerateClick() {
+  if (isGenerating) {
+    stopEverything();
+    return;
+  }
+
+  clearMsg();
+
+  let payload;
+  try {
+    payload = buildPayload();
+  } catch (err) {
+    showMsg('err', err.message);
+    return;
+  }
+
+  if (!payload.input || !payload.input.trim()) {
+    showMsg('err', '请先输入要合成的文本（input 不能为空）。');
+    dom.textInput.focus();
+    return;
+  }
+
+  run(payload);
+}
+
+// ================================================================
+// 连接状态 / 模型 / 音色
+// ================================================================
+function setStatus(state) {
+  dom.statusDot.dataset.state = state;
+  dom.statusText.dataset.state = state;
+  dom.statusText.textContent = state === 'ok' ? '已连接'
+    : state === 'fail' ? '连接失败'
+    : '未连接';
+}
+
+async function probe() {
+  setStatus('checking');
+  dom.modelName.textContent = '—';
+  dom.refreshBtn.disabled = true;
+
+  try {
+    const res = await fetch(apiUrl('/health'), { method: 'GET', cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    if (!data || data.status !== 'ok') throw new Error('health 返回异常');
+  } catch (err) {
+    setStatus('fail');
+    dom.statusText.title = err && err.message ? err.message : '';
+    dom.refreshBtn.disabled = false;
+    return;
+  }
+
+  setStatus('ok');
+  dom.statusText.title = '';
+  await Promise.allSettled([loadModel(), loadVoices()]);
+  dom.refreshBtn.disabled = false;
+}
+
+async function loadModel() {
+  try {
+    const res = await fetch(apiUrl('/v1/models'), { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    const id = data && data.data && data.data[0] && data.data[0].id;
+    dom.modelName.textContent = id || '未知模型';
+  } catch (err) {
+    dom.modelName.textContent = '获取失败';
+  }
+}
+
+async function loadVoices() {
+  try {
+    const res = await fetch(apiUrl('/v1/audio/voices'), { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    const list = Array.isArray(data && data.voices) ? data.voices : [];
+    voicesCache = list;
+    renderVoices(list);
+    renderRegistered(list.filter((v) => v && v.kind === 'registered'));
+  } catch (err) {
+    /* 音色列表拉不到时保留现状，不回滚已显示的选项 */
+  }
+}
+
+// 按 kind 分组：内置音色 / 已注册音色
+function renderVoices(list) {
+  const speakers = list.filter((v) => v && v.kind === 'speaker').map((v) => v.name);
+  const registered = list.filter((v) => v && v.kind === 'registered').map((v) => v.name);
+  const names = speakers.concat(registered);
+  const previous = dom.voiceSel.value;
+
+  dom.voiceSel.innerHTML = '';
+  dom.voiceSel.appendChild(new Option('（不指定）', ''));
+
+  if (speakers.length) {
+    const group = document.createElement('optgroup');
+    group.label = '内置音色';
+    for (const name of speakers) group.appendChild(new Option(name, name));
+    dom.voiceSel.appendChild(group);
+  }
+  if (registered.length) {
+    const group = document.createElement('optgroup');
+    group.label = '已注册音色';
+    for (const name of registered) group.appendChild(new Option(name, name));
+    dom.voiceSel.appendChild(group);
+  }
+
+  let pick = '';
+  if (!voiceInitialized) {
+    const saved = savedForm && typeof savedForm.voice === 'string' ? savedForm.voice : null;
+    if (saved !== null && (saved === '' || names.includes(saved))) {
+      pick = saved;
+    } else if (names.includes('vivian')) {
+      pick = 'vivian';           // 默认优先 vivian
+    } else if (speakers.length) {
+      pick = speakers[0];        // 否则第一个内置音色
+    }
+    voiceInitialized = true;
+  } else if (previous && names.includes(previous)) {
+    pick = previous;
+  }
+  dom.voiceSel.value = pick;
+}
+
+function renderRegistered(list) {
+  if (!list.length) {
+    dom.registeredList.innerHTML = '<li class="empty">暂无</li>';
+    return;
+  }
+  dom.registeredList.innerHTML = list.map((v) => `
+    <li>
+      <span>${esc(v.name)}</span>
+      <button class="btn btn-sm" type="button" data-voice="${esc(v.name)}">删除</button>
+    </li>`).join('');
+}
+
+// ================================================================
+// 克隆音色注册
+// ================================================================
+// 用 readAsDataURL 取逗号后的 payload：不要 String.fromCharCode(...bytes)，
+// 大文件展开成参数会直接爆调用栈。
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error(`读取文件失败：${file.name}`));
+    reader.onload = () => {
+      const result = String(reader.result || '');
+      const comma = result.indexOf(',');
+      resolve(comma >= 0 ? result.slice(comma + 1) : result);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function parseErrorMessage(text, status) {
+  let message = '';
+  try {
+    const data = JSON.parse(text);
+    if (data && data.error && data.error.message) message = String(data.error.message);
+  } catch (e) {
+    /* 非 JSON */
+  }
+  return message || text.trim().slice(0, 300) || `HTTP ${status}`;
+}
+
+async function registerVoice() {
+  dom.cloneMsg.hidden = true;
+
+  const name = dom.cloneName.value.trim();
+  if (!name) {
+    cloneMsg('err', '请填写音色名称（name 必填）。');
+    dom.cloneName.focus();
+    return;
+  }
+
+  const modeInput = document.querySelector('input[name="cloneMode"]:checked');
+  const mode = modeInput ? modeInput.value : 'wav';
+  const body = { name };
+  const refText = dom.cloneRef.value.trim();
+  if (refText) body.ref_text = refText;
+
+  try {
+    dom.cloneBtn.disabled = true;
+
+    if (mode === 'wav') {
+      const file = dom.cloneWav.files && dom.cloneWav.files[0];
+      if (!file) throw new Error('请选择 .wav 参考音频文件。');
+      if (file.size > MAX_UPLOAD_BYTES) {
+        throw new Error('参考音频过大（服务端请求体上限 32 MB，base64 会膨胀 4/3）。');
+      }
+      body.wav_b64 = await fileToBase64(file);
+    } else {
+      const spk = dom.cloneSpk.files && dom.cloneSpk.files[0];
+      const rvq = dom.cloneRvq.files && dom.cloneRvq.files[0];
+      if (!spk || !rvq) throw new Error('请同时选择 .spk 与 .rvq 文件。');
+      if (spk.size > MAX_UPLOAD_BYTES || rvq.size > MAX_UPLOAD_BYTES) {
+        throw new Error('文件过大（服务端请求体上限 32 MB）。');
+      }
+      body.spk_b64 = await fileToBase64(spk);
+      body.rvq_b64 = await fileToBase64(rvq);
+    }
+
+    const res = await fetch(apiUrl('/v1/audio/voices'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const text = await res.text();
+
+    if (!res.ok) {
+      let message = parseErrorMessage(text, res.status);
+      if (/only valid for base models/i.test(message)) {
+        message += '（当前模型不支持克隆，需 base 类型模型）';
+      }
+      throw new Error(message);
+    }
+
+    cloneMsg('ok', `已注册音色「${name}」。`);
+    dom.cloneName.value = '';
+    dom.cloneRef.value = '';
+    dom.cloneWav.value = '';
+    dom.cloneSpk.value = '';
+    dom.cloneRvq.value = '';
+
+    await loadVoices();
+    if (voicesCache.some((v) => v && v.name === name)) {
+      dom.voiceSel.value = name;
+    }
+    saveFormSoon();
+  } catch (err) {
+    cloneMsg('err', err && err.message ? err.message : String(err));
+  } finally {
+    dom.cloneBtn.disabled = false;
+  }
+}
+
+async function deleteVoice(name) {
+  if (!window.confirm(`删除已注册音色「${name}」？`)) return;
+  try {
+    const res = await fetch(apiUrl('/v1/audio/voices/' + encodeURIComponent(name)), {
+      method: 'DELETE',
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      throw new Error(parseErrorMessage(text, res.status));
+    }
+    dom.cloneMsg.hidden = true;
+    await loadVoices();
+    saveFormSoon();
+  } catch (err) {
+    cloneMsg('err', `删除失败：${err && err.message ? err.message : err}`);
+  }
+}
+
+// ================================================================
+// 历史记录
+// ================================================================
+function readHistory() {
+  try {
+    const raw = localStorage.getItem(LS.history);
+    const list = raw ? JSON.parse(raw) : [];
+    return Array.isArray(list) ? list : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function pushHistory(payload) {
+  const entry = { ts: Date.now(), input: payload.input, params: snapshotForm() };
+  const list = readHistory();
+  list.unshift(entry);
+  try {
+    localStorage.setItem(LS.history, JSON.stringify(list.slice(0, HISTORY_LIMIT)));
+  } catch (e) {
+    /* 配额不足时忽略 */
+  }
+  renderHistory();
+}
+
+function renderHistory() {
+  const list = readHistory();
+  if (!list.length) {
+    dom.histList.innerHTML =
+      '<li class="muted" style="font-size:12px;padding:4px 2px">暂无记录</li>';
+    return;
+  }
+  dom.histList.innerHTML = list.map((entry, index) => {
+    const text = String(entry.input || '').replace(/\s+/g, ' ').trim();
+    const preview = text.length > 60 ? text.slice(0, 60) + '…' : text;
+    const voice = (entry.params && entry.params.voice) || '（未指定）';
+    return `
+      <li>
+        <button class="hist-item" type="button" data-index="${index}"
+                title="${esc(text.slice(0, 200))}">
+          <span class="hist-time">${fmtTime(entry.ts || Date.now())}</span>
+          <span class="hist-text">${esc(preview)}</span>
+          <span class="hist-voice">${esc(voice)}</span>
+        </button>
+      </li>`;
+  }).join('');
+}
+
+function restoreHistory(index) {
+  const entry = readHistory()[index];
+  if (!entry) return;
+  applyForm(entry.params);
+  dom.textInput.value = entry.input || '';
+  updateCount();
+  saveFormSoon();
+  showMsg('ok', '已回填该条历史的文本与参数。');
+}
+
+function clearHistory() {
+  if (!readHistory().length) return;
+  if (!window.confirm('清空全部历史记录？')) return;
+  try {
+    localStorage.removeItem(LS.history);
+  } catch (e) {
+    /* ignore */
+  }
+  renderHistory();
+}
+
+// ================================================================
+// 语言下拉
+// ================================================================
+function buildLanguageOptions() {
+  const options = ['<option value="">（使用服务端默认）</option>'];
+  for (const lang of LANGUAGES) {
+    const label = lang === 'auto' ? 'auto（自动）' : lang;
+    options.push(`<option value="${lang}">${label}</option>`);
+  }
+  options.push(`<option value="${CUSTOM_LANG}">自定义…</option>`);
+  dom.langSel.innerHTML = options.join('');
+  dom.langSel.value = 'English';
+}
+
+// ================================================================
+// 事件绑定
+// ================================================================
+function wireEvents() {
+  dom.genBtn.addEventListener('click', onGenerateClick);
+  dom.refreshBtn.addEventListener('click', probe);
+
+  // Cmd / Ctrl + Enter 触发（含 textarea 内）
+  document.addEventListener('keydown', (ev) => {
+    if ((ev.metaKey || ev.ctrlKey) && (ev.key === 'Enter' || ev.keyCode === 13)) {
+      ev.preventDefault();
+      onGenerateClick();
+    }
+  });
+
+  dom.textInput.addEventListener('input', () => {
+    updateCount();
+    saveFormSoon();
+  });
+
+  dom.serverUrl.addEventListener('change', () => {
+    const url = baseUrl();
+    dom.serverUrl.value = url;
+    try {
+      localStorage.setItem(LS.url, url);
+    } catch (e) {
+      /* ignore */
+    }
+    probe();
+  });
+
+  dom.voiceSel.addEventListener('change', saveFormSoon);
+  dom.customLang.addEventListener('input', saveFormSoon);
+  dom.instructions.addEventListener('input', saveFormSoon);
+
+  dom.langSel.addEventListener('change', () => {
+    const custom = dom.langSel.value === CUSTOM_LANG;
+    dom.customLangRow.hidden = !custom;
+    if (custom) dom.customLang.focus();
+    saveFormSoon();
+  });
+
+  for (const radio of $$('input[name="format"]')) {
+    radio.addEventListener('change', saveFormSoon);
+  }
+
+  for (const btn of $$('[data-preset]')) {
+    btn.addEventListener('click', () => applyPreset(btn.dataset.preset));
+  }
+
+  for (const radio of $$('input[name="cloneMode"]')) {
+    radio.addEventListener('change', () => {
+      const checked = document.querySelector('input[name="cloneMode"]:checked');
+      const isLatents = checked && checked.value === 'latents';
+      dom.cloneWavRow.hidden = !!isLatents;
+      dom.cloneLatentRows.hidden = !isLatents;
+    });
+  }
+
+  dom.cloneBtn.addEventListener('click', registerVoice);
+
+  dom.registeredList.addEventListener('click', (ev) => {
+    const btn = ev.target.closest('button[data-voice]');
+    if (btn) deleteVoice(btn.dataset.voice);
+  });
+
+  dom.histList.addEventListener('click', (ev) => {
+    const btn = ev.target.closest('button[data-index]');
+    if (btn) restoreHistory(Number(btn.dataset.index));
+  });
+
+  dom.clearHistory.addEventListener('click', clearHistory);
+}
+
+// ================================================================
+// 启动
+// ================================================================
+function init() {
+  try {
+    dom.serverUrl.value = localStorage.getItem(LS.url) || DEFAULT_SERVER;
+  } catch (e) {
+    dom.serverUrl.value = DEFAULT_SERVER;
+  }
+
+  buildLanguageOptions();
+  buildParams();
+
+  let form = null;
+  try {
+    const raw = localStorage.getItem(LS.form);
+    if (raw) form = JSON.parse(raw);
+  } catch (e) {
+    form = null;
+  }
+  savedForm = form;
+  if (form) applyForm(form);
+
+  renderHistory();
+  updateCount();
+  wireEvents();
+  probe();
+}
+
+init();
+
+</script>
+</body>
+</html>

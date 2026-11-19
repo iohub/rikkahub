@@ -319,11 +319,16 @@ sealed class TTSProviderSetting {
     }
 
     /**
-     * 自建 OpenAI 兼容 TTS 服务 (qwen-talker 的 tts-server)。
+     * 自建 qwen-talker tts-server (OpenAI 兼容 TTS 接口)。
      *
-     * 走 [POST {baseUrl}/audio/speech], baseUrl 约定已包含 `/v1` (与 OpenAI 一致),
-     * apiKey 为空时不下发 Authorization 头。除 OpenAI 标准字段 (input/voice/response_format/model)
-     * 外, 额外支持 language (覆盖服务端默认语言)、temperature 与 seed。
+     * 走 `POST {baseUrl}/audio/speech`, baseUrl 约定已包含 `/v1` (与 OpenAI 一致),
+     * apiKey 为空时不下发 Authorization 头。请求体规则:
+     * - 恒发: `input`、`response_format` ("wav" | "pcm");
+     * - 非空才发: `model` / `voice` / `language` / `instructions`;
+     * - 非 null 才发 (null = 保留服务端引擎默认值): 9 个采样参数。
+     *
+     * 服务端另外提供 `GET /health`、`GET /models`、`GET|POST /audio/voices` 与
+     * `DELETE /audio/voices/{name}`, 由 RemoteTTSApi 封装。
      *
      * responseFormat = "wav" 时服务端一次性返回完整 wav 文件; "pcm" 时返回 s16le 裸流 (无头部),
      * 由 AudioPlayer 按 [sampleRate] 补 WAV 头后再播放。
@@ -341,13 +346,22 @@ sealed class TTSProviderSetting {
         val voice: String = "",
         // 覆盖服务端默认语言, 如 "English" / "Chinese", 留空时不下发
         val language: String = "",
+        // 风格/情绪指令 (自然语言), 留空时不下发
+        val instructions: String = "",
         // wav: 一次性返回完整文件 | pcm: 流式返回 s16le 裸流
         val responseFormat: String = "wav",
         // 仅 pcm 裸流需要, AudioPlayer 用它补 WAV 头
         val sampleRate: Int = 24000,
-        val temperature: Float = 0.8f,
-        // -1 表示不下发, >= 0 时传给服务端做可复现的采样
-        val seed: Int = -1,
+        // 以下 9 个采样参数: null = 不下发 = 保留服务端引擎默认值
+        val seed: Int? = null,
+        val maxNewTokens: Int? = null,
+        val temperature: Float? = null,
+        val topK: Int? = null,
+        val topP: Float? = null,
+        val repetitionPenalty: Float? = null,
+        val subtalkerTemperature: Float? = null,
+        val subtalkerTopK: Int? = null,
+        val subtalkerTopP: Float? = null,
     ) : TTSProviderSetting() {
         override fun copyProvider(
             id: Uuid,
@@ -358,7 +372,141 @@ sealed class TTSProviderSetting {
                 name = name,
             )
         }
+
+        companion object {
+            /** 服务端支持的 `language` 候选值; `auto` 表示由服务端自行判定语种 */
+            val REMOTE_TTS_LANGUAGES = listOf(
+                "auto",
+                "Chinese",
+                "English",
+                "Japanese",
+                "Korean",
+                "German",
+                "French",
+                "Russian",
+                "Portuguese",
+                "Spanish",
+                "Italian",
+            )
+
+            /** 服务端支持的 `response_format` 候选值 */
+            val REMOTE_TTS_RESPONSE_FORMATS = listOf("wav", "pcm")
+
+            /** pcm 裸流补 WAV 头时可选的采样率 */
+            val REMOTE_TTS_SAMPLE_RATES = listOf(16000, 22050, 24000, 32000, 44100)
+
+            /**
+             * 9 个采样参数的元数据, 供设置页画滑杆/输入框并展示「引擎默认值」。
+             * [RemoteTTSSamplingParam.key] 即服务端 snake_case 字段名, 与 [RemoteTTS] 的字段一一对应。
+             */
+            val REMOTE_TTS_SAMPLING_PARAMS = listOf(
+                RemoteTTSSamplingParam(
+                    key = "seed",
+                    label = "Seed",
+                    isFloat = false,
+                    defaultValue = -1f,
+                    min = 0f,
+                    max = 0f,
+                    step = 1f,
+                    hasRange = false,
+                ),
+                RemoteTTSSamplingParam(
+                    key = "max_new_tokens",
+                    label = "Max New Tokens",
+                    isFloat = false,
+                    defaultValue = 2048f,
+                    min = 16f,
+                    max = 4096f,
+                    step = 1f,
+                ),
+                RemoteTTSSamplingParam(
+                    key = "temperature",
+                    label = "Temperature",
+                    isFloat = true,
+                    defaultValue = 0.9f,
+                    min = 0f,
+                    max = 2f,
+                    step = 0.05f,
+                ),
+                RemoteTTSSamplingParam(
+                    key = "top_k",
+                    label = "Top K",
+                    isFloat = false,
+                    defaultValue = 50f,
+                    min = 0f,
+                    max = 200f,
+                    step = 1f,
+                ),
+                RemoteTTSSamplingParam(
+                    key = "top_p",
+                    label = "Top P",
+                    isFloat = true,
+                    defaultValue = 1.0f,
+                    min = 0.05f,
+                    max = 1f,
+                    step = 0.01f,
+                ),
+                RemoteTTSSamplingParam(
+                    key = "repetition_penalty",
+                    label = "Repetition Penalty",
+                    isFloat = true,
+                    defaultValue = 1.05f,
+                    min = 1f,
+                    max = 2f,
+                    step = 0.01f,
+                ),
+                RemoteTTSSamplingParam(
+                    key = "subtalker_temperature",
+                    label = "Subtalker Temperature",
+                    isFloat = true,
+                    defaultValue = 0.9f,
+                    min = 0f,
+                    max = 2f,
+                    step = 0.05f,
+                ),
+                RemoteTTSSamplingParam(
+                    key = "subtalker_top_k",
+                    label = "Subtalker Top K",
+                    isFloat = false,
+                    defaultValue = 50f,
+                    min = 0f,
+                    max = 200f,
+                    step = 1f,
+                ),
+                RemoteTTSSamplingParam(
+                    key = "subtalker_top_p",
+                    label = "Subtalker Top P",
+                    isFloat = true,
+                    defaultValue = 1.0f,
+                    min = 0.05f,
+                    max = 1f,
+                    step = 0.01f,
+                ),
+            )
+
+            /** 按服务端字段名取采样参数元数据, 找不到返回 null */
+            fun samplingParamsOf(key: String): RemoteTTSSamplingParam? =
+                REMOTE_TTS_SAMPLING_PARAMS.firstOrNull { it.key == key }
+        }
     }
+
+    /**
+     * 一个采样参数的元数据 (纯 UI 用, 不落盘)。
+     *
+     * [key] 是服务端 snake_case 字段名; [isFloat] = false 表示 int 参数;
+     * [defaultValue] 是服务端引擎默认值 (int 参数也以 Float 承载, 便于 UI 统一处理);
+     * [hasRange] = false 表示该参数没有滑杆范围概念 (例如 seed), UI 用普通输入框。
+     */
+    data class RemoteTTSSamplingParam(
+        val key: String,
+        val label: String,
+        val isFloat: Boolean,
+        val defaultValue: Float,
+        val min: Float,
+        val max: Float,
+        val step: Float,
+        val hasRange: Boolean = true,
+    )
 
     companion object {
         val Types by lazy {
