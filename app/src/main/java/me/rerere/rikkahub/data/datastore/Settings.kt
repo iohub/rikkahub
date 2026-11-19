@@ -182,6 +182,12 @@ data class DisplaySetting(
     val ttsOnlyReadQuoted: Boolean = false,
     val ttsOnlyReadOutsideBrackets: Boolean = false,
     val autoPlayTTSAfterGeneration: Boolean = false,
+    /**
+     * 远程 TTS 自动预生成：助手消息生成完成后立即在后台调用远程 TTS 合成并写入加密缓存，
+     * 不播放。之后点播放时直接命中缓存，无需等待网络与推理。
+     * 仅在当前 TTS provider 为远程 TTS 且该 provider 的 cacheEnabled 打开时生效。
+     */
+    val prefetchTTSAfterGeneration: Boolean = false,
     val voiceModeListenWhileReplying: Boolean = true,
     val pasteLongTextAsFile: Boolean = false,
     val pasteLongTextThreshold: Int = 1000,

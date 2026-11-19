@@ -2122,6 +2122,8 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_remote_tts_group_cache">语音缓存</string>
   <string name="setting_remote_tts_cache_enabled">启用缓存</string>
   <string name="setting_remote_tts_cache_enabled_desc">合成结果加密保存在本机，同一段文本再次朗读时直接复用，不再请求服务端</string>
+  <string name="setting_remote_tts_cache_prefetch">回复后自动预生成</string>
+  <string name="setting_remote_tts_cache_prefetch_desc">回复生成完成后立即在后台合成并写入加密缓存，之后播放直接命中缓存、瞬间出声。需先启用缓存，且仅对远程 TTS 生效</string>
   <string name="setting_remote_tts_cache_stats">%1$d 条 · %2$s</string>
   <string name="setting_remote_tts_cache_clear">清空缓存</string>
   <string name="setting_remote_tts_cache_clear_confirm">将删除本机 %1$s 的缓存语音？缓存可以重新生成，但下次播放需要重新请求服务端。</string>

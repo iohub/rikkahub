@@ -2043,6 +2043,8 @@
   <string name="setting_remote_tts_group_cache">Кэш аудио</string>
   <string name="setting_remote_tts_cache_enabled">Включить кэш</string>
   <string name="setting_remote_tts_cache_enabled_desc">Результат синтеза шифруется и сохраняется на устройстве и используется повторно, когда тот же текст озвучивается снова, без запроса к серверу</string>
+  <string name="setting_remote_tts_cache_prefetch">Предварительный синтез после ответа</string>
+  <string name="setting_remote_tts_cache_prefetch_desc">Ответ синтезируется в фоне сразу после генерации и сохраняется в зашифрованный кэш, поэтому воспроизведение начинается мгновенно. Требуется включённый кэш; применяется только к удалённому TTS</string>
   <string name="setting_remote_tts_cache_stats">%1$d шт. · %2$s</string>
   <string name="setting_remote_tts_cache_clear">Очистить кэш</string>
   <string name="setting_remote_tts_cache_clear_confirm">Удалить %1$s кэшированного аудио на этом устройстве? Кэш можно создать заново, но при следующем воспроизведении снова будет запрос к серверу.</string>

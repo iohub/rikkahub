@@ -10,6 +10,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -50,6 +51,9 @@ class TtsController(
     // Provider & 作业
     private var currentProvider: TTSProviderSetting? = null
     private var workerJob: Job? = null
+
+    // 后台预生成作业：与播放的 workerJob 完全独立，且只保留最新一次
+    private var prefetchJob: Job? = null
     private var isPaused = false
 
     // 队列与缓存（基于稳定 ID）
@@ -143,6 +147,37 @@ class TtsController(
         }
 
         if (workerJob?.isActive != true) startWorker()
+    }
+
+    /**
+     * 后台预生成：[text] 走与 [speak] 相同的分片与合成链路，但只写入磁盘缓存，不播放。
+     * 用于「生成完成后自动预生成」，让随后的播放命中 TtsAudioCache。
+     *
+     * 只碰 [chunker] 与 [synthesizer]：不写队列、不写进程内合成缓存、不动播放状态机，也不进 [audio]。
+     * 仅当当前 provider 为 RemoteTTS 且其 cacheEnabled 打开时才有意义，其它情况直接跳过
+     * （此时 [TtsSynthesizer.synthesize] 仍会请求服务端，只是不落盘，白耗流量）。
+     */
+    fun prefetch(text: String) {
+        if (text.isBlank()) return
+        val provider = currentProvider
+        if (provider !is TTSProviderSetting.RemoteTTS || !provider.cacheEnabled) return
+
+        // 串行化并支持取消：连发多条消息时只保留最后一次，避免后台堆积大量合成请求抢占服务
+        prefetchJob?.cancel()
+        prefetchJob = scope.launch(Dispatchers.IO) {
+            for (chunk in chunker.split(text)) {
+                // 预生成是纯后台任务，被取消时立刻退出，不要继续请求剩余分片
+                ensureActive()
+                try {
+                    synthesizer.synthesize(provider, chunk)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // 静默失败：单段失败不影响其它分片，也不向 UI 报错（用户手动播放时还会重试）
+                    Log.d(TAG, "Prefetch failed for chunk ${chunk.index}", e)
+                }
+            }
+        }
     }
 
     private fun internalReset() {

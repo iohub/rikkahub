@@ -357,6 +357,7 @@ private fun ChatPageContent(
     }
 
     TTSAutoPlay(vm = vm, setting = setting, conversation = conversation)
+    TTSPrefetch(vm = vm, setting = setting, conversation = conversation)
 
     BackHandler(previewMode) {
         previewMode = false

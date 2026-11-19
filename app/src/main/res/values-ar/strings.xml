@@ -2041,6 +2041,8 @@
   <string name="setting_remote_tts_group_cache">ذاكرة التخزين المؤقت للصوت</string>
   <string name="setting_remote_tts_cache_enabled">تفعيل التخزين المؤقت</string>
   <string name="setting_remote_tts_cache_enabled_desc">يُحفظ الصوت المُولَّد مشفَّرًا على هذا الجهاز ويُعاد استخدامه عند قراءة النص نفسه مرة أخرى دون طلب الخادم</string>
+  <string name="setting_remote_tts_cache_prefetch">التوليد المسبق بعد الرد</string>
+  <string name="setting_remote_tts_cache_prefetch_desc">يُولَّد الرد صوتيًا في الخلفية فور اكتمال توليده ويُحفظ في الذاكرة المؤقتة المشفَّرة، لتبدأ إعادة التشغيل فورًا. يتطلب تفعيل التخزين المؤقت ويُطبَّق على TTS البعيد فقط</string>
   <string name="setting_remote_tts_cache_stats">%1$d عنصرًا · %2$s</string>
   <string name="setting_remote_tts_cache_clear">مسح ذاكرة التخزين المؤقت</string>
   <string name="setting_remote_tts_cache_clear_confirm">حذف %1$s من الصوت المخزَّن على هذا الجهاز؟ يمكن إعادة توليد الذاكرة المؤقتة، لكن التشغيل التالي سيطلب من الخادم من جديد.</string>

@@ -381,6 +381,16 @@ fun SettingRemoteTTSPage(vm: SettingVM = koinViewModel()) {
                         onEnabledChange = { enabled ->
                             updateRemoteProvider(target.copy(cacheEnabled = enabled))
                         },
+                        prefetchEnabled = settings.displaySetting.prefetchTTSAfterGeneration,
+                        onPrefetchEnabledChange = { enabled ->
+                            vm.updateSettings { latest ->
+                                latest.copy(
+                                    displaySetting = latest.displaySetting.copy(
+                                        prefetchTTSAfterGeneration = enabled
+                                    )
+                                )
+                            }
+                        },
                     )
                 }
             }
@@ -583,6 +593,8 @@ private fun synthesisErrorMessage(context: Context, message: String, voice: Stri
 private fun AudioCacheGroup(
     provider: TTSProviderSetting.RemoteTTS,
     onEnabledChange: (Boolean) -> Unit,
+    prefetchEnabled: Boolean,
+    onPrefetchEnabledChange: (Boolean) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     // 统计刷新计数：清空成功后自增，produceState 才会重新扫一遍目录
@@ -609,6 +621,18 @@ private fun AudioCacheGroup(
                 Text(stringResource(R.string.setting_remote_tts_cache_enabled_desc))
             },
             headlineContent = { Text(stringResource(R.string.setting_remote_tts_cache_enabled)) },
+        )
+
+        // 预生成是全局行为开关（DisplaySetting），但只对远程 TTS 的磁盘缓存有意义，
+        // 所以放在这个分组里；缓存关掉时置灰——没有地方可写，开着也只会白请求服务端
+        switchItem(
+            checked = prefetchEnabled,
+            onCheckedChange = onPrefetchEnabledChange,
+            enabled = provider.cacheEnabled,
+            supportingContent = {
+                Text(stringResource(R.string.setting_remote_tts_cache_prefetch_desc))
+            },
+            headlineContent = { Text(stringResource(R.string.setting_remote_tts_cache_prefetch)) },
         )
 
         // 条目数 + 实际占用：统计未完成时显示「计算中」，避免先闪一下「0 条 · 0 B」

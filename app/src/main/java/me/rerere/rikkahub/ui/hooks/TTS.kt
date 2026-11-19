@@ -95,6 +95,12 @@ interface CustomTtsState {
      */
     fun speak(text: String, flushCalled: Boolean = true)
 
+    /**
+     * 后台预生成语音：与 [speak] 走完全相同的文本清理、分片与合成链路，但只写入磁盘缓存，不播放。
+     * 仅对「开启了缓存的远程 TTS」生效，其它情况静默跳过。
+     */
+    fun prefetch(text: String)
+
     /** Stops the current speech and clears the queue. */
     fun stop()
 
@@ -145,6 +151,12 @@ private class CustomTtsStateImpl(
     override fun speak(text: String, flushCalled: Boolean) {
         val processed = text.stripMarkdown()
         controller.speak(processed, flushCalled)
+    }
+
+    override fun prefetch(text: String) {
+        // 必须与 speak 对称地做 Markdown 清理：否则分片文本不同，缓存键对不上，预生成就白做了
+        val processed = text.stripMarkdown()
+        controller.prefetch(processed)
     }
 
     override fun stop() {

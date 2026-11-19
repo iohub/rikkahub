@@ -2043,6 +2043,8 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="setting_remote_tts_group_cache">音声キャッシュ</string>
   <string name="setting_remote_tts_cache_enabled">キャッシュを有効化</string>
   <string name="setting_remote_tts_cache_enabled_desc">合成結果はこの端末に暗号化して保存され、同じテキストを再度読み上げるときは再利用され、サーバーへ再リクエストしません</string>
+  <string name="setting_remote_tts_cache_prefetch">返信後に自動で事前生成</string>
+  <string name="setting_remote_tts_cache_prefetch_desc">返信の生成が完了するとすぐにバックグラウンドで合成して暗号化キャッシュに保存するため、再生時に即座に再生されます。キャッシュを有効にしている必要があり、リモート TTS のみに適用されます</string>
   <string name="setting_remote_tts_cache_stats">%1$d 件 · %2$s</string>
   <string name="setting_remote_tts_cache_clear">キャッシュを削除</string>
   <string name="setting_remote_tts_cache_clear_confirm">この端末の %1$s のキャッシュ音声を削除しますか？キャッシュは再生成できますが、次回の再生時にサーバーへ再リクエストします。</string>

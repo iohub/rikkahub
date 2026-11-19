@@ -2120,6 +2120,8 @@
   <string name="setting_remote_tts_group_cache">Audio cache</string>
   <string name="setting_remote_tts_cache_enabled">Enable cache</string>
   <string name="setting_remote_tts_cache_enabled_desc">Synthesized audio is encrypted on this device and reused when the same text is spoken again</string>
+  <string name="setting_remote_tts_cache_prefetch">Pre-generate after reply</string>
+  <string name="setting_remote_tts_cache_prefetch_desc">Synthesize the reply in the background right after generation and store it in the encrypted cache, so playback starts instantly. Requires cache to be enabled and only applies to remote TTS.</string>
   <string name="setting_remote_tts_cache_stats">%1$d items · %2$s</string>
   <string name="setting_remote_tts_cache_clear">Clear cache</string>
   <string name="setting_remote_tts_cache_clear_confirm">Delete %1$s of cached audio on this device? Cached entries can be regenerated, but the next playback will request the server again.</string>

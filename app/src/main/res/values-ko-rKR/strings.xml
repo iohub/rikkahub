@@ -2043,6 +2043,8 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="setting_remote_tts_group_cache">음성 캐시</string>
   <string name="setting_remote_tts_cache_enabled">캐시 사용</string>
   <string name="setting_remote_tts_cache_enabled_desc">합성 결과는 이 기기에 암호화되어 저장되며, 같은 텍스트를 다시 재생할 때 재사용되어 서버에 다시 요청하지 않습니다</string>
+  <string name="setting_remote_tts_cache_prefetch">답변 후 자동 미리 생성</string>
+  <string name="setting_remote_tts_cache_prefetch_desc">답변 생성이 끝나면 곧바로 백그라운드에서 합성해 암호화 캐시에 저장하므로 재생 시 즉시 재생됩니다. 캐시를 먼저 활성화해야 하며 원격 TTS에만 적용됩니다</string>
   <string name="setting_remote_tts_cache_stats">%1$d개 · %2$s</string>
   <string name="setting_remote_tts_cache_clear">캐시 삭제</string>
   <string name="setting_remote_tts_cache_clear_confirm">이 기기에 있는 %1$s의 캐시 음성을 삭제할까요? 캐시는 다시 생성할 수 있지만, 다음 재생 시 서버에 다시 요청합니다.</string>

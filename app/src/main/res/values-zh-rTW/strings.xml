@@ -2041,6 +2041,8 @@
   <string name="setting_remote_tts_group_cache">語音快取</string>
   <string name="setting_remote_tts_cache_enabled">啟用快取</string>
   <string name="setting_remote_tts_cache_enabled_desc">合成結果加密儲存在本機，同一段文字再次朗讀時直接重複使用，不再請求伺服器</string>
+  <string name="setting_remote_tts_cache_prefetch">回覆後自動預生成</string>
+  <string name="setting_remote_tts_cache_prefetch_desc">回覆生成完成後立即在背景合成並寫入加密快取，之後播放直接命中快取、瞬間出聲。需先啟用快取，且僅對遠端 TTS 生效</string>
   <string name="setting_remote_tts_cache_stats">%1$d 筆 · %2$s</string>
   <string name="setting_remote_tts_cache_clear">清除快取</string>
   <string name="setting_remote_tts_cache_clear_confirm">將刪除本機 %1$s 的快取語音？快取可以重新產生，但下次播放需要重新請求伺服器。</string>

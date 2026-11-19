@@ -2041,6 +2041,8 @@
   <string name="setting_remote_tts_group_cache">Audio-Cache</string>
   <string name="setting_remote_tts_cache_enabled">Cache aktivieren</string>
   <string name="setting_remote_tts_cache_enabled_desc">Synthetisiertes Audio wird auf diesem Gerät verschlüsselt gespeichert und wiederverwendet, wenn derselbe Text erneut vorgelesen wird, ohne erneute Serveranfrage</string>
+  <string name="setting_remote_tts_cache_prefetch">Nach der Antwort vorab generieren</string>
+  <string name="setting_remote_tts_cache_prefetch_desc">Die Antwort wird direkt nach der Generierung im Hintergrund synthetisiert und im verschlüsselten Cache gespeichert, sodass die Wiedergabe sofort startet. Erfordert aktivierten Cache und gilt nur für Remote-TTS</string>
   <string name="setting_remote_tts_cache_stats">%1$d Einträge · %2$s</string>
   <string name="setting_remote_tts_cache_clear">Cache leeren</string>
   <string name="setting_remote_tts_cache_clear_confirm">%1$s zwischengespeichertes Audio auf diesem Gerät löschen? Der Cache kann neu erzeugt werden, die nächste Wiedergabe fragt aber wieder den Server an.</string>
