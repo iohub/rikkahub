@@ -6,9 +6,6 @@ import android.net.Uri
 import android.util.Log
 import androidx.core.net.toFile
 import androidx.core.net.toUri
-import java.io.File
-import java.net.HttpURLConnection
-import java.net.URL
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -23,6 +20,10 @@ import me.rerere.rikkahub.data.repository.FilesRepository
 import me.rerere.rikkahub.utils.exportImage
 import me.rerere.rikkahub.utils.exportImageFile
 import me.rerere.rikkahub.utils.getActivity
+import me.rerere.tts.cache.TtsAudioCache
+import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 
@@ -189,7 +190,9 @@ class FilesManager(
                                 val urls = createChatFilesByByteArrays(listOf(byteArray))
                                 Log.i(
                                     TAG,
-                                    "convertBase64ImagePartToLocalFile: convert base64 img to ${urls.joinToString(", ")}"
+                                    "convertBase64ImagePartToLocalFile: convert base64 img to ${urls.joinToString(
+                                        ", "
+                                    )}"
                                 )
                                 part.copy(
                                     url = urls.first().toString(),
@@ -340,7 +343,7 @@ class FilesManager(
         var inserted = 0
         val diskRelativePaths = HashSet<String>()
         diskFiles.forEach { file ->
-            val relativePath = "${folder}/${file.name}"
+            val relativePath = "$folder/${file.name}"
             diskRelativePaths.add(relativePath)
             val existing = repository.getByPath(relativePath)
             if (existing == null) {
@@ -521,6 +524,9 @@ object FileFolders {
     const val FONTS = "fonts"
     const val TOOL_OUTPUTS = "tool_outputs"
     const val MEDIA_CREATION = "media_creation"
+
+    /** 远程 TTS 合成结果缓存，按 providerId 分子目录；目录名直接复用缓存实现里的常量 */
+    const val TTS_AUDIO = TtsAudioCache.FOLDER_NAME
 }
 
 suspend fun FilesManager.saveUploadFromUri(

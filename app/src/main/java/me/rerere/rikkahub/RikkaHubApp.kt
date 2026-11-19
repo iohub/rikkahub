@@ -44,6 +44,7 @@ import me.rerere.rikkahub.service.WebServerService
 import me.rerere.rikkahub.utils.CrashHandler
 import me.rerere.rikkahub.utils.DatabaseUtil
 import me.rerere.rikkahub.utils.JsonInstant
+import me.rerere.tts.cache.TtsAudioCache
 import me.rerere.workspace.WorkspaceManager
 import org.koin.android.ext.android.get
 import org.koin.android.ext.koin.androidContext
@@ -82,6 +83,8 @@ class RikkaHubApp : Application() {
             workManagerFactory()
             modules(appModule, viewModelModule, dataSourceModule, repositoryModule)
         }
+        // 远程 TTS 音频缓存目录：必须在备份还原之后（还原会覆盖 filesDir）、任何合成之前确定
+        TtsAudioCache.init(filesDir)
         this.createNotificationChannel()
 
         // set cursor window size to 32MB

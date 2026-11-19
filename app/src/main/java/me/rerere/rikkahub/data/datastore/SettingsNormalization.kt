@@ -129,6 +129,7 @@ private fun TTSProviderSetting.withValuesInRange(): TTSProviderSetting {
     return copy(
         responseFormat = responseFormat.trim().lowercase().takeIf { it in supportedFormats } ?: "wav",
         sampleRate = sampleRate.takeIf { it in supportedSampleRates } ?: 24000,
+        cacheMaxMb = cacheMaxMb.coerceIn(32, 4096),
     )
 }
 

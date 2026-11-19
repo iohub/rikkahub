@@ -362,6 +362,9 @@ sealed class TTSProviderSetting {
         val subtalkerTemperature: Float? = null,
         val subtalkerTopK: Int? = null,
         val subtalkerTopP: Float? = null,
+        // 语音缓存：合成结果落盘复用，命中时不再请求服务端
+        val cacheEnabled: Boolean = true,
+        val cacheMaxMb: Int = 256,
     ) : TTSProviderSetting() {
         override fun copyProvider(
             id: Uuid,
