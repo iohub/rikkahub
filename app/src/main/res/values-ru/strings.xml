@@ -970,6 +970,7 @@
   <string name="setting_tts_page_provider_gemini">Gemini</string>
   <string name="setting_tts_page_provider_openai">OpenAI</string>
   <string name="setting_tts_page_provider_system">Системное TTS</string>
+  <string name="setting_tts_page_provider_remote">Удалённое TTS</string>
   <string name="setting_tts_page_provider_type">Тип поставщика</string>
   <string name="setting_tts_page_provider_type_description">Выберите тип поставщика TTS</string>
   <string name="setting_tts_page_selected">Выбрано</string>

@@ -1127,6 +1127,7 @@
   <string name="setting_tts_page_provider_gemini">Gemini</string>
   <string name="setting_tts_page_provider_openai">OpenAI</string>
   <string name="setting_tts_page_provider_system">System TTS</string>
+  <string name="setting_tts_page_provider_remote">Remote TTS</string>
   <string name="setting_tts_page_provider_type">Provider Type</string>
   <string name="setting_tts_page_provider_type_description">Select the TTS provider type</string>
   <string name="setting_tts_page_selected">Selected</string>

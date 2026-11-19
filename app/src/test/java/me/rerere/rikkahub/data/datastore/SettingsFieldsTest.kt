@@ -75,7 +75,8 @@ class SettingsFieldsTest {
         assertEquals(DEFAULT_AUTO_MODEL_ID, settings.translateModeId)
         assertEquals(DEFAULT_MODE_INJECTIONS, settings.modeInjections)
         assertEquals(DEFAULT_ASSISTANT_ID, settings.assistantId)
-        assertEquals(DEFAULT_SYSTEM_TTS_ID, settings.selectedTTSProviderId)
+        assertEquals(DEFAULT_REMOTE_TTS_ID, settings.selectedTTSProviderId)
+        assertEquals(false, settings.enableBuiltInTts)
         assertEquals(null, settings.selectedASRProviderId)
         assertEquals(null, settings.memoryModelId)
         assertEquals(true, settings.dynamicColor)
@@ -158,6 +159,7 @@ private val SAMPLE = Settings(
     mediaGenerationProviders = listOf(MediaGenerationProviderSetting.OpenAI(id = id(9))),
     ttsProviders = DEFAULT_TTS_PROVIDERS.take(1),
     selectedTTSProviderId = id(10),
+    enableBuiltInTts = true,
     defaultTTSPlaybackSpeed = 1.5f,
     asrProviders = listOf(ASRProviderSetting.OpenAIRealtime(id = id(11))),
     selectedASRProviderId = id(11),
@@ -231,6 +233,7 @@ private val STORED_KEYS = setOf(
     "media_generation_providers",
     "tts_providers",
     "selected_tts_provider",
+    "enable_built_in_tts",
     "default_tts_playback_speed",
     "asr_providers",
     "selected_asr_provider",

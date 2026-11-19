@@ -1087,6 +1087,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_tts_page_provider_gemini">Gemini</string>
   <string name="setting_tts_page_provider_openai">OpenAI</string>
   <string name="setting_tts_page_provider_system">系统TTS</string>
+  <string name="setting_tts_page_provider_remote">远程 TTS 服务</string>
   <string name="setting_tts_page_provider_type">提供商类型</string>
   <string name="setting_tts_page_provider_type_description">选择TTS提供商类型</string>
   <string name="setting_tts_page_selected">已选择</string>

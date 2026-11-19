@@ -1,5 +1,7 @@
 package me.rerere.rikkahub.data.datastore
 
+import me.rerere.tts.provider.TTSProviderSetting
+
 /** 读盘后和每次修改后都要过一遍，保证内存里的设置始终是规整的。 */
 internal fun Settings.normalized(): Settings =
     withBuiltInDefaults().withoutInvalidReferences().withValuesInRange().withUsableTTSProvider()

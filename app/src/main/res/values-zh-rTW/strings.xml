@@ -968,6 +968,7 @@
   <string name="setting_tts_page_provider_gemini">Gemini</string>
   <string name="setting_tts_page_provider_openai">OpenAI</string>
   <string name="setting_tts_page_provider_system">系統TTS</string>
+  <string name="setting_tts_page_provider_remote">遠端 TTS 服務</string>
   <string name="setting_tts_page_provider_type">提供商類型</string>
   <string name="setting_tts_page_provider_type_description">選擇TTS提供商類型</string>
   <string name="setting_tts_page_selected">已選擇</string>

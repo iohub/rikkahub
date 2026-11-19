@@ -970,6 +970,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="setting_tts_page_provider_gemini">Gemini</string>
   <string name="setting_tts_page_provider_openai">OpenAI</string>
   <string name="setting_tts_page_provider_system">システムTTS</string>
+  <string name="setting_tts_page_provider_remote">リモート TTS</string>
   <string name="setting_tts_page_provider_type">プロバイダーの種類</string>
   <string name="setting_tts_page_provider_type_description">TTSプロバイダーの種類を選択</string>
   <string name="setting_tts_page_selected">選択済み</string>

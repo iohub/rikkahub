@@ -970,6 +970,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="setting_tts_page_provider_gemini">Gemini</string>
   <string name="setting_tts_page_provider_openai">OpenAI</string>
   <string name="setting_tts_page_provider_system">시스템 TTS</string>
+  <string name="setting_tts_page_provider_remote">원격 TTS</string>
   <string name="setting_tts_page_provider_type">제공업체 유형</string>
   <string name="setting_tts_page_provider_type_description">TTS 제공업체 유형 선택</string>
   <string name="setting_tts_page_selected">선택됨</string>

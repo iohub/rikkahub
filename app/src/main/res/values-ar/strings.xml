@@ -1167,6 +1167,7 @@
   <string name="setting_tts_page_provider_gemini">Gemini</string>
   <string name="setting_tts_page_provider_openai">OpenAI</string>
   <string name="setting_tts_page_provider_system">TTS النظام</string>
+  <string name="setting_tts_page_provider_remote">TTS عن بعد</string>
   <string name="setting_tts_page_provider_type">نوع المزوّد</string>
   <string name="setting_tts_page_provider_type_description">اختر نوع مزوّد TTS</string>
   <string name="setting_tts_page_selected">محدد</string>

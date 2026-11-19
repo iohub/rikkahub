@@ -58,6 +58,7 @@ import me.rerere.hugeicons.stroke.VolumeHigh
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.DEFAULT_SYSTEM_TTS_ID
 import me.rerere.rikkahub.data.datastore.Settings
+import me.rerere.rikkahub.data.datastore.fallbackTTSProvider
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.components.ui.AutoAIIcon
 import me.rerere.rikkahub.ui.components.ui.ItemAction
@@ -110,10 +111,16 @@ fun SettingSpeechPage(vm: SettingVM = koinViewModel()) {
                 },
                 actions = {
                     when (SpeechTab.entries[pagerState.targetPage]) {
-                        SpeechTab.TTS -> AddTTSProviderButton {
+                        SpeechTab.TTS -> AddTTSProviderButton(
+                            // 内置 TTS 关闭时默认新建远程 TTS：否则新条目一保存就被列表过滤掉，像是没保存上
+                            defaultProvider = {
+                                if (settings.enableBuiltInTts) TTSProviderSetting.SystemTTS()
+                                else TTSProviderSetting.RemoteTTS()
+                            },
+                        ) { newProvider ->
                             vm.updateSettings { latest ->
                                 latest.copy(
-                                    ttsProviders = listOf(it) + latest.ttsProviders
+                                    ttsProviders = listOf(newProvider) + latest.ttsProviders
                                 )
                             }
                         }
@@ -211,12 +218,28 @@ private fun TTSProviderList(
     onEdit: (TTSProviderSetting) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // 内置 TTS 关闭时不展示系统 TTS：条目仍留在 ttsProviders 里，重新打开开关就能再选
+    val visibleProviders = remember(settings.ttsProviders, settings.enableBuiltInTts) {
+        if (settings.enableBuiltInTts) settings.ttsProviders
+        else settings.ttsProviders.filterNot { it is TTSProviderSetting.SystemTTS }
+    }
+    val visibleIds = remember(visibleProviders) { visibleProviders.map { it.id } }
     val lazyListState = rememberLazyListState()
     val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
-        val newProviders = settings.ttsProviders.toMutableList().apply {
-            add(to.index, removeAt(from.index))
+        // from/to 是过滤后列表的下标，不能直接拿去操作原始 ttsProviders：
+        // 先把可见项按新顺序重排，再填回它们在原始列表里占的槽位，被隐藏的系统 TTS 留在原位
+        onUpdateSettings { latest ->
+            val latestVisible = if (latest.enableBuiltInTts) {
+                latest.ttsProviders
+            } else {
+                latest.ttsProviders.filterNot { it is TTSProviderSetting.SystemTTS }
+            }
+            // 拖拽期间列表变过（增删或切换了内置开关），这次拖拽的下标已经对不上，丢弃
+            if (latestVisible.map { it.id } != visibleIds) latest
+            else latest.copy(
+                ttsProviders = latest.ttsProviders.reorderVisible(latestVisible, from.index, to.index)
+            )
         }
-        onUpdateSettings { it.copy(ttsProviders = newProviders) }
     }
     var deleteTarget by remember { mutableStateOf<TTSProviderSetting?>(null) }
 
@@ -226,7 +249,7 @@ private fun TTSProviderList(
         verticalArrangement = Arrangement.spacedBy(8.dp),
         state = lazyListState
     ) {
-        items(settings.ttsProviders, key = { it.id }) { provider ->
+        items(visibleProviders, key = { it.id }) { provider ->
             ReorderableItem(
                 state = reorderableState,
                 key = provider.id
@@ -265,8 +288,14 @@ private fun TTSProviderList(
         onConfirm = {
             deleteTarget?.let { target ->
                 val newProviders = settings.ttsProviders.filter { it.id != target.id }
-                val newSelectedId =
-                    if (settings.selectedTTSProviderId == target.id) DEFAULT_SYSTEM_TTS_ID else settings.selectedTTSProviderId
+                // 删的正好是选中项时按门禁顺序回退：默认远程 TTS → 第一个非系统 TTS，
+                // 只有内置 TTS 打开时才允许回退到系统 TTS
+                val newSelectedId = if (settings.selectedTTSProviderId == target.id) {
+                    newProviders.fallbackTTSProvider(allowSystemTTS = settings.enableBuiltInTts)?.id
+                        ?: settings.selectedTTSProviderId
+                } else {
+                    settings.selectedTTSProviderId
+                }
                 onUpdateSettings {
                     it.copy(
                         ttsProviders = newProviders,
@@ -279,6 +308,33 @@ private fun TTSProviderList(
         onDismiss = { deleteTarget = null },
     ) {
         Text(stringResource(R.string.common_delete_confirm_message, deleteTarget?.name.orEmpty()))
+    }
+}
+
+/**
+ * 把过滤后列表上发生的拖拽套回原始列表。
+ *
+ * [visible] 是界面上看到的顺序，[fromIndex] / [toIndex] 也是它的下标。重排后可见项按新顺序依次
+ * 填回它们在原始列表里占的槽位，被隐藏的内置系统 TTS 保持在原位置 —— 直接用过滤后的下标去操作
+ * 原始列表会把它挪到错误的位置。
+ *
+ * internal 而非 private：索引映射最容易出错，单元测试要直接覆盖它。
+ */
+internal fun List<TTSProviderSetting>.reorderVisible(
+    visible: List<TTSProviderSetting>,
+    fromIndex: Int,
+    toIndex: Int,
+): List<TTSProviderSetting> {
+    if (fromIndex == toIndex) return this
+    if (fromIndex !in visible.indices || toIndex !in visible.indices) return this
+    val reordered = visible.toMutableList().apply { add(toIndex, removeAt(fromIndex)) }
+    val byId = associateBy { it.id }
+    // 拖拽期间数据被别处改过（比如刚拖动的提供商被删除），这次拖拽丢弃
+    if (reordered.any { it.id !in byId }) return this
+    val visibleIdSet = visible.mapTo(HashSet()) { it.id }
+    val order = reordered.iterator()
+    return map { provider ->
+        if (provider.id in visibleIdSet) byId.getValue(order.next().id) else provider
     }
 }
 
@@ -359,13 +415,16 @@ private fun ASRProviderList(
     }
 }
 
-// 类型在配置面板里选，新建时默认是系统 TTS
+// 类型在配置面板里选，新建时的默认类型由调用方决定（内置 TTS 关闭时给远程 TTS）
 @Composable
-private fun AddTTSProviderButton(onAdd: (TTSProviderSetting) -> Unit) {
+private fun AddTTSProviderButton(
+    defaultProvider: () -> TTSProviderSetting,
+    onAdd: (TTSProviderSetting) -> Unit,
+) {
     var newProvider by remember { mutableStateOf<TTSProviderSetting?>(null) }
 
     IconButton(
-        onClick = { newProvider = TTSProviderSetting.SystemTTS() }
+        onClick = { newProvider = defaultProvider() }
     ) {
         Icon(HugeIcons.Add01, stringResource(R.string.setting_tts_page_add_provider_content_description))
     }
@@ -446,6 +505,7 @@ private val TTSProviderSetting.typeName: String
         is TTSProviderSetting.FishAudio -> "Fish Audio"
         is TTSProviderSetting.Volcengine -> "火山引擎"
         is TTSProviderSetting.DeepSeek -> "DeepSeek"
+        is TTSProviderSetting.RemoteTTS -> stringResource(R.string.setting_tts_page_provider_remote)
     }
 
 // TTS 和 ASR 列表共用的服务商卡片，点卡片编辑，点单选圈设为当前使用

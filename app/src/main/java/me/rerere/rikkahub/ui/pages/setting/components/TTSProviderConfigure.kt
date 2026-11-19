@@ -1386,3 +1386,135 @@ private fun CardGroupScope.deepSeekTTSItems(
         )
     }
 }
+
+// 自建的 OpenAI 兼容 TTS 服务：除 model/voice/language 外都可留空，留空的字段不下发
+private fun CardGroupScope.remoteTTSItems(
+    setting: TTSProviderSetting.RemoteTTS,
+    onValueChange: (TTSProviderSetting) -> Unit
+) {
+    // Base URL
+    formItem(
+        headlineContent = { Text(stringResource(R.string.setting_tts_page_base_url)) },
+        supportingContent = { Text("请求发往 {Base URL}/audio/speech，需要包含 /v1 这类版本前缀") }
+    ) {
+        OutlinedTextField(
+            value = setting.baseUrl,
+            onValueChange = { onValueChange(setting.copy(baseUrl = it)) },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("http://127.0.0.1:8080/v1") },
+            singleLine = true,
+        )
+    }
+
+    // API Key
+    formItem(
+        headlineContent = { Text(stringResource(R.string.setting_tts_page_api_key)) },
+        supportingContent = { Text("留空则不发送 Authorization 头，适合无鉴权的自建服务") }
+    ) {
+        OutlinedTextField(
+            value = setting.apiKey,
+            onValueChange = { onValueChange(setting.copy(apiKey = it)) },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("sk-...") },
+            singleLine = true,
+        )
+    }
+
+    // Model
+    formItem(
+        headlineContent = { Text(stringResource(R.string.setting_tts_page_model)) },
+        supportingContent = { Text("服务端的模型 alias，留空不下发，由服务端选择默认模型") }
+    ) {
+        OutlinedTextField(
+            value = setting.model,
+            onValueChange = { onValueChange(setting.copy(model = it)) },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("qwen3-tts-base") },
+            singleLine = true,
+        )
+    }
+
+    // Voice
+    formItem(
+        headlineContent = { Text(stringResource(R.string.setting_tts_page_voice)) },
+        supportingContent = { Text("克隆音色名，留空时使用服务端默认音色") }
+    ) {
+        OutlinedTextField(
+            value = setting.voice,
+            onValueChange = { onValueChange(setting.copy(voice = it)) },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("clone-voice-name") },
+            singleLine = true,
+        )
+    }
+
+    // Language
+    formItem(
+        headlineContent = { Text("Language") },
+        supportingContent = { Text("覆盖服务端的默认语言，如 English / Chinese，留空不下发") }
+    ) {
+        OutlinedTextField(
+            value = setting.language,
+            onValueChange = { onValueChange(setting.copy(language = it)) },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("Chinese") },
+            singleLine = true,
+        )
+    }
+
+    // Response Format
+    val formats = listOf("wav", "mp3", "ogg", "opus", "aac", "pcm")
+    formItem(
+        headlineContent = { Text("Response Format") },
+        supportingContent = { Text("wav 返回完整音频文件；pcm 返回 s16le 裸流，播放时按采样率补 WAV 头") }
+    ) {
+        SelectTextField(
+            value = setting.responseFormat,
+            options = formats,
+            onOptionSelected = { format -> onValueChange(setting.copy(responseFormat = format)) },
+            readOnly = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+
+    // Sample Rate：只有裸 PCM 需要
+    if (setting.responseFormat.trim().equals("pcm", ignoreCase = true)) {
+        formItem(
+            headlineContent = { Text("Sample Rate") },
+            supportingContent = { Text("pcm 裸流的采样率，单位 Hz") }
+        ) {
+            OutlinedNumberInput(
+                value = setting.sampleRate,
+                onValueChange = { onValueChange(setting.copy(sampleRate = it.coerceIn(8000, 48000))) },
+                modifier = Modifier.fillMaxWidth(),
+                label = "24000",
+            )
+        }
+    }
+
+    // Temperature
+    formItem(
+        headlineContent = { Text(stringResource(R.string.setting_tts_page_temperature)) },
+        supportingContent = { Text(stringResource(R.string.setting_tts_page_temperature_description)) }
+    ) {
+        OutlinedNumberInput(
+            value = setting.temperature,
+            onValueChange = { onValueChange(setting.copy(temperature = it.coerceIn(0f, 2f))) },
+            modifier = Modifier.fillMaxWidth(),
+            label = "0.8",
+        )
+    }
+
+    // Seed：负数表示不下发
+    formItem(
+        headlineContent = { Text("Seed") },
+        supportingContent = { Text("固定采样种子便于复现，负数表示不下发") }
+    ) {
+        OutlinedNumberInput(
+            value = setting.seed,
+            onValueChange = { onValueChange(setting.copy(seed = it)) },
+            modifier = Modifier.fillMaxWidth(),
+            label = "-1",
+        )
+    }
+}
