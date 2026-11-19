@@ -992,6 +992,32 @@
   <string name="setting_remote_tts_test_play">Anhören</string>
   <string name="setting_remote_tts_add">Remote-TTS-Dienst hinzufügen</string>
   <string name="setting_remote_tts_missing">Noch kein Remote-TTS-Dienst vorhanden</string>
+  <string name="setting_remote_tts_group_voice_language">Stimme &amp; Sprache</string>
+  <string name="setting_remote_tts_group_sampling">Sampling-Parameter</string>
+  <string name="setting_remote_tts_group_output">Ausgabeformat</string>
+  <string name="setting_remote_tts_voice">Stimme</string>
+  <string name="setting_remote_tts_voice_hint">Leer lassen, um die Server-Standardstimme zu verwenden; ein Stimmenname kann auch direkt eingegeben werden</string>
+  <string name="setting_remote_tts_voice_none">(Nicht angegeben)</string>
+  <string name="setting_remote_tts_voice_speakers">Integrierte Stimmen</string>
+  <string name="setting_remote_tts_voice_registered">Registrierte Stimmen</string>
+  <string name="setting_remote_tts_voice_refresh">Stimmen aktualisieren</string>
+  <string name="setting_remote_tts_voice_empty">Der Server hat noch keine Stimmenliste geliefert; Stimmenname kann direkt eingegeben werden</string>
+  <string name="setting_remote_tts_language">Sprache</string>
+  <string name="setting_remote_tts_language_hint">Leer lassen, um die Standardsprache des Servers zu verwenden</string>
+  <string name="setting_remote_tts_language_default">(Server-Standard)</string>
+  <string name="setting_remote_tts_instructions">Stil-Anweisung</string>
+  <string name="setting_remote_tts_instructions_hint">Bei VoiceDesign-Modellen erforderlich, sonst optional, z. B. „sanft, etwas langsamer“; leer = wird nicht gesendet</string>
+  <string name="setting_remote_tts_sampling_hint">Nur aktivierte Parameter landen in der Anfrage-JSON; deaktiviert = wird nicht gesendet = Engine-Standardwert bleibt erhalten</string>
+  <string name="setting_remote_tts_sampling_reset">Zurücksetzen</string>
+  <string name="setting_remote_tts_sampling_greedy">Greedy</string>
+  <string name="setting_remote_tts_sampling_disabled">Deaktiviert, Engine-Standardwert %1$s wird verwendet</string>
+  <string name="setting_remote_tts_seed_hint">-1 lässt den Server zufällig sampeln, jeder andere ganzzahlige Wert ist ein fester Seed</string>
+  <string name="setting_remote_tts_max_new_tokens_seconds">Etwa %1$s s Audio</string>
+  <string name="setting_remote_tts_preset_default">Alle Standardwerte</string>
+  <string name="setting_remote_tts_preset_greedy">Greedy</string>
+  <string name="setting_remote_tts_preset_stable">Stabil</string>
+  <string name="setting_remote_tts_preset_creative">Kreativ</string>
+  <string name="setting_remote_tts_response_format_hint">pcm streamt Audio während der Generierung (weniger Wartezeit); wav liefert eine komplette Datei</string>
   <string name="setting_provider_page_save">Speichern</string>
   <string name="setting_provider_page_save_success">Erfolgreich gespeichert</string>
   <string name="setting_provider_page_scan_qr_code">QR-Code scannen</string>

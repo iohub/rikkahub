@@ -2,17 +2,26 @@ package me.rerere.rikkahub.ui.pages.setting.components
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -20,6 +29,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
@@ -29,10 +39,15 @@ import me.rerere.hugeicons.stroke.ViewOff
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.ui.components.ui.CardGroup
 import me.rerere.rikkahub.ui.components.ui.CardGroupScope
+import me.rerere.rikkahub.ui.components.ui.CardGroupValue
 import me.rerere.tts.provider.TTSProviderSetting
+import me.rerere.tts.provider.providers.RemoteVoiceInfo
 import me.rerere.ui.components.OutlinedNumberInput
 import me.rerere.ui.components.SelectTextField
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import java.util.Locale
+import kotlin.math.roundToInt
+import kotlin.uuid.Uuid
 
 /**
  * TTS 提供商配置表单。
@@ -1407,15 +1422,28 @@ private fun CardGroupScope.deepSeekTTSItems(
 }
 
 /**
- * 自建的 OpenAI 兼容 TTS 服务：除 model/voice/language 外都可留空，留空的字段不下发。
+ * 自建的 OpenAI 兼容 TTS 服务表单, 按服务端文档分成三节:
+ * 服务 (baseUrl / apiKey / model) -> 音色与语言 (voice / language / instructions) -> 输出格式。
  *
- * internal 而非 private：「远程 TTS 服务」设置页要复用同一套表单，避免两处实现漂移。
+ * 空字符串 = 不下发; 采样参数见 [remoteSamplingItems] (null = 不下发 = 保留引擎默认值)。
+ *
+ * internal 而非 private: 「远程 TTS 服务」设置页要复用同一套表单, 避免两处实现漂移。
+ *
+ * @param voiceOptions 服务端返回的音色列表, 为空表示还没拉取 (用户仍可手写音色名)
+ * @param onRefreshVoices 非 null 才显示「刷新音色列表」按钮
+ * @param voicesLoading 拉取中, 用于禁用刷新按钮并显示进度
+ * @param voiceLoadError 拉取失败的提示, 非 null 时以 supportingContent 展示
  */
 internal fun CardGroupScope.remoteTTSItems(
     setting: TTSProviderSetting.RemoteTTS,
-    onValueChange: (TTSProviderSetting) -> Unit
+    onValueChange: (TTSProviderSetting) -> Unit,
+    voiceOptions: List<RemoteVoiceInfo> = emptyList(),
+    onRefreshVoices: (() -> Unit)? = null,
+    voicesLoading: Boolean = false,
+    voiceLoadError: String? = null,
 ) {
-    // Base URL：非空但不是合法 URL 时标红
+    // ---------------- 服务 ----------------
+    // Base URL: 非空但不是合法 URL 时标红
     val baseUrlInvalid = setting.baseUrl.isNotBlank() && setting.baseUrl.toHttpUrlOrNull() == null
     formItem(
         headlineContent = { Text(stringResource(R.string.setting_tts_page_base_url)) },
@@ -1439,16 +1467,30 @@ internal fun CardGroupScope.remoteTTSItems(
         )
     }
 
-    // API Key
+    // API Key: 密码遮罩, 可切换显示
     formItem(
         headlineContent = { Text(stringResource(R.string.setting_tts_page_api_key)) },
         supportingContent = { Text(stringResource(R.string.setting_tts_page_api_key_optional_description)) }
     ) {
+        var keyVisible by remember(setting.id) { mutableStateOf(false) }
         OutlinedTextField(
             value = setting.apiKey,
             onValueChange = { onValueChange(setting.copy(apiKey = it)) },
             modifier = Modifier.fillMaxWidth(),
             placeholder = { Text(stringResource(R.string.setting_tts_page_api_key_placeholder_openai)) },
+            visualTransformation = if (keyVisible) {
+                VisualTransformation.None
+            } else {
+                PasswordVisualTransformation()
+            },
+            trailingIcon = {
+                IconButton(onClick = { keyVisible = !keyVisible }) {
+                    Icon(
+                        imageVector = if (keyVisible) HugeIcons.ViewOff else HugeIcons.View,
+                        contentDescription = null,
+                    )
+                }
+            },
             singleLine = true,
         )
     }
@@ -1467,121 +1509,446 @@ internal fun CardGroupScope.remoteTTSItems(
         )
     }
 
-    // Voice
+    // ---------------- 音色与语言 ----------------
+    remoteGroupTitle { stringResource(R.string.setting_remote_tts_group_voice_language) }
+
+    // Voice: SelectTextField 同时允许下拉选择和自由输入, 服务端列表为空时也能手打音色名
+    val voiceChoices = listOf(RemoteVoiceChoice(name = "", kind = "")) +
+        voiceOptions.map { RemoteVoiceChoice(name = it.name, kind = it.kind) }
     formItem(
-        headlineContent = { Text(stringResource(R.string.setting_tts_page_voice)) },
-        supportingContent = { Text(stringResource(R.string.setting_tts_page_voice_optional_description)) }
+        headlineContent = { Text(stringResource(R.string.setting_remote_tts_voice)) },
+        supportingContent = {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(stringResource(R.string.setting_remote_tts_voice_hint))
+                if (voiceOptions.isEmpty() && voiceLoadError == null) {
+                    Text(stringResource(R.string.setting_remote_tts_voice_empty))
+                }
+                if (voiceLoadError != null) {
+                    Text(
+                        text = voiceLoadError,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+        }
     ) {
-        OutlinedTextField(
+        SelectTextField(
             value = setting.voice,
+            options = voiceChoices,
             onValueChange = { onValueChange(setting.copy(voice = it)) },
+            onOptionSelected = { choice -> onValueChange(setting.copy(voice = choice.name)) },
+            optionToString = { choice ->
+                when {
+                    choice.name.isBlank() -> stringResource(R.string.setting_remote_tts_voice_none)
+                    choice.kind.equals("registered", ignoreCase = true) ->
+                        stringResource(R.string.setting_remote_tts_voice_registered) + " · " + choice.name
+
+                    choice.kind.equals("speaker", ignoreCase = true) ->
+                        stringResource(R.string.setting_remote_tts_voice_speakers) + " · " + choice.name
+
+                    else -> choice.name
+                }
+            },
             modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("clone-voice-name") },
-            singleLine = true,
+            placeholder = { Text("vivian") },
         )
+        if (onRefreshVoices != null) {
+            TextButton(onClick = onRefreshVoices, enabled = !voicesLoading) {
+                if (voicesLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                }
+                Text(stringResource(R.string.setting_remote_tts_voice_refresh))
+            }
+        }
     }
 
-    // Language
+    // Language: 空 = 服务端默认; 候选值里带 auto, 同时保留自由输入以支持自定义语言标签
     formItem(
-        headlineContent = { Text(stringResource(R.string.setting_tts_page_language)) },
-        supportingContent = { Text(stringResource(R.string.setting_tts_page_language_optional_description)) }
+        headlineContent = { Text(stringResource(R.string.setting_remote_tts_language)) },
+        supportingContent = { Text(stringResource(R.string.setting_remote_tts_language_hint)) }
     ) {
-        OutlinedTextField(
+        SelectTextField(
             value = setting.language,
+            options = listOf("") + TTSProviderSetting.RemoteTTS.REMOTE_TTS_LANGUAGES,
             onValueChange = { onValueChange(setting.copy(language = it)) },
+            onOptionSelected = { language -> onValueChange(setting.copy(language = language)) },
+            optionToString = { language ->
+                if (language.isBlank()) {
+                    stringResource(R.string.setting_remote_tts_language_default)
+                } else {
+                    language
+                }
+            },
             modifier = Modifier.fillMaxWidth(),
             placeholder = { Text("Chinese") },
-            singleLine = true,
         )
     }
 
-    // Response Format
-    val formats = listOf("wav", "mp3", "ogg", "opus", "aac", "pcm")
+    // Instructions: VoiceDesign 模型必填, 其它模型可选; 空则不下发
+    formItem(
+        headlineContent = { Text(stringResource(R.string.setting_remote_tts_instructions)) },
+        supportingContent = { Text(stringResource(R.string.setting_remote_tts_instructions_hint)) }
+    ) {
+        OutlinedTextField(
+            value = setting.instructions,
+            onValueChange = { onValueChange(setting.copy(instructions = it)) },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("gentle, slightly slower") },
+            minLines = 2,
+            maxLines = 4,
+        )
+    }
+
+    // ---------------- 输出格式 ----------------
+    remoteGroupTitle { stringResource(R.string.setting_remote_tts_group_output) }
+
     formItem(
         headlineContent = { Text(stringResource(R.string.setting_tts_page_response_format)) },
-        supportingContent = { Text(stringResource(R.string.setting_tts_page_response_format_description)) }
+        supportingContent = { Text(stringResource(R.string.setting_remote_tts_response_format_hint)) }
     ) {
         SelectTextField(
             value = setting.responseFormat,
-            options = formats,
+            options = TTSProviderSetting.RemoteTTS.REMOTE_TTS_RESPONSE_FORMATS,
             onOptionSelected = { format -> onValueChange(setting.copy(responseFormat = format)) },
             readOnly = true,
             modifier = Modifier.fillMaxWidth(),
         )
     }
 
-    // Sample Rate：只有裸 PCM 需要
+    // Sample Rate: 只有裸 PCM 裸流需要, 播放时用它补 WAV 头
     if (setting.responseFormat.trim().equals("pcm", ignoreCase = true)) {
         formItem(
             headlineContent = { Text(stringResource(R.string.setting_tts_page_sample_rate)) },
             supportingContent = { Text(stringResource(R.string.setting_tts_page_sample_rate_pcm_description)) }
         ) {
-            OutlinedNumberInput(
-                value = setting.sampleRate,
-                onValueChange = { onValueChange(setting.copy(sampleRate = it.coerceIn(8000, 48000))) },
+            SelectTextField(
+                value = setting.sampleRate.toString(),
+                options = TTSProviderSetting.RemoteTTS.REMOTE_TTS_SAMPLE_RATES,
+                onOptionSelected = { rate -> onValueChange(setting.copy(sampleRate = rate)) },
+                optionToString = { it.toString() },
+                readOnly = true,
                 modifier = Modifier.fillMaxWidth(),
-                label = "24000",
-            )
-        }
-    }
-
-    // Temperature
-    formItem(
-        headlineContent = { Text(stringResource(R.string.setting_tts_page_temperature)) },
-        supportingContent = { Text(stringResource(R.string.setting_tts_page_temperature_description)) }
-    ) {
-        OutlinedNumberInput(
-            value = setting.temperature,
-            onValueChange = { onValueChange(setting.copy(temperature = it.coerceIn(0f, 2f))) },
-            modifier = Modifier.fillMaxWidth(),
-            label = "0.8",
-        )
-    }
-
-    // Seed：负数表示不下发。数字键盘打不出负号，所以用开关表达「-1 = 随机」，
-    // 关掉开关才显示固定种子的输入框（0 及以上），这样 -1 随时能设回去。
-    //
-    // 开关和输入框必须放在同一个 formItem 的 content 里：CardGroup 的 content 是普通的
-    // CardGroupScope.() -> Unit（只负责录制条目，不是 @Composable），函数体里用不了 remember；
-    // 只有 formItem 的 content（@Composable ColumnScope.() -> Unit）能持有组合状态，
-    // 用它记住上一次的固定种子，关闭开关时恢复该值而不是固定写 0
-    val randomSeed = setting.seed < 0
-    formItem(
-        headlineContent = { Text(stringResource(R.string.setting_tts_page_random_seed)) },
-        supportingContent = { Text(stringResource(R.string.setting_tts_page_random_seed_description)) },
-    ) {
-        var lastFixedSeed by remember(setting.id) {
-            mutableStateOf(if (setting.seed < 0) 0 else setting.seed)
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Switch(
-                checked = randomSeed,
-                onCheckedChange = { random ->
-                    onValueChange(setting.copy(seed = if (random) -1 else lastFixedSeed))
-                },
-            )
-        }
-        if (!randomSeed) {
-            Text(
-                text = stringResource(R.string.setting_tts_page_seed_description),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            OutlinedNumberInput(
-                value = setting.seed,
-                onValueChange = { value ->
-                    val fixedSeed = value.coerceAtLeast(0)
-                    // 记下来：再次关闭随机开关时用它恢复
-                    lastFixedSeed = fixedSeed
-                    onValueChange(setting.copy(seed = fixedSeed))
-                },
-                modifier = Modifier.fillMaxWidth(),
-                label = stringResource(R.string.setting_tts_page_seed),
             )
         }
     }
 }
+
+/**
+ * 采样参数 (精细控制): 9 个参数共用一条 null 语义 ——
+ * null = 不写入请求 JSON = 保留服务端引擎默认值。
+ *
+ * 注意 gotcha: [CardGroupScope] 扩展函数的函数体不是 @Composable, 里面不能调 remember,
+ * 组合状态(输入框文本)全部下沉到 [RemoteSamplingValueField] 这个 @Composable 里,
+ * 这里只负责录制 [CardGroupScope.formItem] 条目。
+ */
+internal fun CardGroupScope.remoteSamplingItems(
+    setting: TTSProviderSetting.RemoteTTS,
+    onValueChange: (TTSProviderSetting) -> Unit,
+) {
+    // 顶部说明
+    item(headlineContent = { Text(stringResource(R.string.setting_remote_tts_sampling_hint)) })
+
+    // 9 行由元数据循环生成, 不手写重复代码
+    TTSProviderSetting.RemoteTTS.REMOTE_TTS_SAMPLING_PARAMS.forEach { param ->
+        val value = setting.samplingValueOf(param.key)
+        val enabled = value != null
+        formItem(
+            headlineContent = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(param.key)
+                    // 温度取 0 时是确定性采样, 习惯上叫「贪心」
+                    if (param.isGreedyValue(value)) {
+                        CardGroupValue(text = stringResource(R.string.setting_remote_tts_sampling_greedy))
+                    }
+                }
+            },
+            supportingContent = {
+                when (param.key) {
+                    "seed" -> Text(stringResource(R.string.setting_remote_tts_seed_hint))
+                    "max_new_tokens" -> Text(
+                        stringResource(
+                            R.string.setting_remote_tts_max_new_tokens_seconds,
+                            formatOneDecimal(
+                                (value ?: param.defaultValue) / REMOTE_TTS_TOKENS_PER_SECOND
+                            ),
+                        )
+                    )
+
+                    else -> Unit
+                }
+            },
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Switch(
+                    checked = enabled,
+                    onCheckedChange = { checked ->
+                        // 打开时写入元数据默认值, 关闭时写回 null (不发送)
+                        onValueChange(
+                            setting.withSamplingValue(
+                                key = param.key,
+                                value = if (checked) param.defaultValue else null,
+                            )
+                        )
+                    },
+                )
+                if (enabled) {
+                    RemoteSamplingValueField(
+                        settingId = setting.id,
+                        param = param,
+                        value = value ?: param.defaultValue,
+                        onValueChange = { newValue ->
+                            onValueChange(setting.withSamplingValue(param.key, newValue))
+                        },
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(
+                        onClick = { onValueChange(setting.withSamplingValue(param.key, null)) },
+                    ) {
+                        Text(stringResource(R.string.setting_remote_tts_sampling_reset))
+                    }
+                } else {
+                    Text(
+                        text = stringResource(
+                            R.string.setting_remote_tts_sampling_disabled,
+                            formatSamplingValue(param, param.defaultValue),
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+        }
+    }
+
+    // 预设: 批量 copy, 其余参数一律回到「不发送」
+    formItem {
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            OutlinedButton(onClick = { onValueChange(setting.withoutSamplingParams()) }) {
+                Text(stringResource(R.string.setting_remote_tts_preset_default))
+            }
+            OutlinedButton(
+                onClick = {
+                    onValueChange(
+                        setting.withoutSamplingParams().copy(
+                            temperature = 0f,
+                            subtalkerTemperature = 0f,
+                        )
+                    )
+                }
+            ) {
+                Text(stringResource(R.string.setting_remote_tts_preset_greedy))
+            }
+            OutlinedButton(
+                onClick = {
+                    onValueChange(
+                        setting.withoutSamplingParams().copy(
+                            temperature = 0.6f,
+                            topK = 20,
+                            topP = 0.9f,
+                            repetitionPenalty = 1.1f,
+                            subtalkerTemperature = 0.6f,
+                            subtalkerTopK = 20,
+                        )
+                    )
+                }
+            ) {
+                Text(stringResource(R.string.setting_remote_tts_preset_stable))
+            }
+            OutlinedButton(
+                onClick = {
+                    onValueChange(
+                        setting.withoutSamplingParams().copy(
+                            temperature = 1.1f,
+                            topP = 0.95f,
+                            repetitionPenalty = 1.02f,
+                        )
+                    )
+                }
+            ) {
+                Text(stringResource(R.string.setting_remote_tts_preset_creative))
+            }
+        }
+    }
+}
+
+/**
+ * CardGroup 内部的小节标题: 白底条目里一行弱化文字, 不引入新组件。
+ *
+ * title 用 @Composable lambda 而不是 String: 调用点所在的 [remoteTTSItems] 是 CardGroupScope
+ * 扩展函数、本身不是 @Composable, 在那里不能直接调 stringResource。
+ */
+private fun CardGroupScope.remoteGroupTitle(title: @Composable () -> String) {
+    item(
+        headlineContent = {
+            Text(
+                text = title(),
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    )
+}
+
+/** 音色下拉项: [name] 为空的那一项是「不指定」 */
+private data class RemoteVoiceChoice(
+    val name: String,
+    val kind: String,
+)
+
+/** 服务端 `max_new_tokens` 与音频时长的粗略换算: 12.5 token ≈ 1 秒 */
+private const val REMOTE_TTS_TOKENS_PER_SECOND = 12.5f
+
+/**
+ * 单个采样参数的数值输入框。
+ *
+ * 用普通文本输入框而不是 OutlinedNumberInput: 后者写死 KeyboardType.Number 敲不出负号,
+ * 而 seed 需要 -1 表示随机。只有解析成功且落在元数据的合法区间内才回写 setting,
+ * 越界和中间态("-"/"0.")留在文本里并标红, 避免实时钳制把用户正在输入的数字改掉。
+ */
+@Composable
+private fun RemoteSamplingValueField(
+    settingId: Uuid,
+    param: TTSProviderSetting.RemoteTTSSamplingParam,
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    // seed 允许负数; 其余参数按元数据 min/max 校验
+    val allowNegative = param.key == "seed"
+    var text by remember(settingId, param.key) { mutableStateOf(formatSamplingValue(param, value)) }
+    // 外部改动(预设 / 重置 / 重新启用)时同步文本; 用户正在输入的等价写法(如 "0.")不覆盖
+    LaunchedEffect(param.key, value) {
+        if (text.toFloatOrNull() != value) {
+            text = formatSamplingValue(param, value)
+        }
+    }
+    val parsed = text.toFloatOrNull()
+    val valid = parsed != null && (allowNegative || parsed in param.min..param.max)
+    OutlinedTextField(
+        value = text,
+        onValueChange = { newText ->
+            text = newText
+            val newValue = newText.toFloatOrNull() ?: return@OutlinedTextField
+            if (!allowNegative && newValue !in param.min..param.max) return@OutlinedTextField
+            onValueChange(normalizeSamplingValue(param, newValue, allowNegative))
+        },
+        modifier = modifier.fillMaxWidth(),
+        singleLine = true,
+        isError = !valid,
+        keyboardOptions = KeyboardOptions(
+            // 整数参数用数字键盘; 浮点要小数点, seed 要负号
+            keyboardType = if (param.isFloat || allowNegative) KeyboardType.Text else KeyboardType.Number
+        ),
+    )
+}
+
+/** 元数据 key -> 设置字段; null 表示该参数未启用 (不下发) */
+private fun TTSProviderSetting.RemoteTTS.samplingValueOf(key: String): Float? = when (key) {
+    "seed" -> seed?.toFloat()
+    "max_new_tokens" -> maxNewTokens?.toFloat()
+    "temperature" -> temperature
+    "top_k" -> topK?.toFloat()
+    "top_p" -> topP
+    "repetition_penalty" -> repetitionPenalty
+    "subtalker_temperature" -> subtalkerTemperature
+    "subtalker_top_k" -> subtalkerTopK?.toFloat()
+    "subtalker_top_p" -> subtalkerTopP
+    else -> null
+}
+
+/** 设置字段 <- 元数据 key; [value] 为 null 即把该字段写回 null (恢复「不发送」) */
+private fun TTSProviderSetting.RemoteTTS.withSamplingValue(
+    key: String,
+    value: Float?,
+): TTSProviderSetting.RemoteTTS = when (key) {
+    "seed" -> copy(seed = value?.roundToInt())
+    "max_new_tokens" -> copy(maxNewTokens = value?.roundToInt())
+    "temperature" -> copy(temperature = value)
+    "top_k" -> copy(topK = value?.roundToInt())
+    "top_p" -> copy(topP = value)
+    "repetition_penalty" -> copy(repetitionPenalty = value)
+    "subtalker_temperature" -> copy(subtalkerTemperature = value)
+    "subtalker_top_k" -> copy(subtalkerTopK = value?.roundToInt())
+    "subtalker_top_p" -> copy(subtalkerTopP = value)
+    else -> this
+}
+
+/** 9 个采样参数全部置 null = 全部不发送 */
+private fun TTSProviderSetting.RemoteTTS.withoutSamplingParams(): TTSProviderSetting.RemoteTTS = copy(
+    seed = null,
+    maxNewTokens = null,
+    temperature = null,
+    topK = null,
+    topP = null,
+    repetitionPenalty = null,
+    subtalkerTemperature = null,
+    subtalkerTopK = null,
+    subtalkerTopP = null,
+)
+
+/** 温度类参数为 0 时展示「贪心」徽标 */
+private fun TTSProviderSetting.RemoteTTSSamplingParam.isGreedyValue(value: Float?): Boolean =
+    (key == "temperature" || key == "subtalker_temperature") && value != null && value == 0f
+
+/** 按元数据把输入值规整到合法范围 (整型取整, 浮点按 step 的小数位截断) */
+private fun normalizeSamplingValue(
+    param: TTSProviderSetting.RemoteTTSSamplingParam,
+    value: Float,
+    allowNegative: Boolean,
+): Float {
+    if (!param.isFloat) {
+        val intValue = value.roundToInt()
+        return if (allowNegative) {
+            intValue.toFloat()
+        } else {
+            intValue.coerceIn(param.min.toInt(), param.max.toInt()).toFloat()
+        }
+    }
+    return value.roundToDecimals(decimalsOf(param.step)).coerceIn(param.min, param.max)
+}
+
+/** 输入框回显的文本: 整型不带小数点, 浮点去掉长度不定的尾随 0 */
+private fun formatSamplingValue(
+    param: TTSProviderSetting.RemoteTTSSamplingParam,
+    value: Float,
+): String {
+    if (!param.isFloat) return value.roundToInt().toString()
+    val rounded = value.roundToDecimals(decimalsOf(param.step))
+    return if (rounded == rounded.toInt().toFloat()) {
+        rounded.toInt().toString()
+    } else {
+        rounded.toString()
+    }
+}
+
+/** "12.5" -> 1; "0.05" -> 2 (用于把浮点值截断到 step 的精度) */
+private fun decimalsOf(step: Float): Int {
+    val text = step.toString()
+    val dot = text.indexOf('.')
+    return if (dot < 0) 0 else (text.length - dot - 1).coerceAtMost(3)
+}
+
+private fun Float.roundToDecimals(decimals: Int): Float {
+    var factor = 1f
+    repeat(decimals) { factor *= 10f }
+    return (this * factor).roundToInt() / factor
+}
+
+/** 秒数保留 1 位小数, 固定 Locale.US 避免某些区域给出本地数字 */
+private fun formatOneDecimal(value: Float): String = String.format(Locale.US, "%.1f", value)

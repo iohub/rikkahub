@@ -42,6 +42,7 @@ import me.rerere.rikkahub.ui.components.ui.CardGroup
 import me.rerere.rikkahub.ui.components.ui.switchItem
 import me.rerere.rikkahub.ui.context.LocalTTSState
 import me.rerere.rikkahub.ui.context.LocalToaster
+import me.rerere.rikkahub.ui.pages.setting.components.remoteSamplingItems
 import me.rerere.rikkahub.ui.pages.setting.components.remoteTTSItems
 import me.rerere.rikkahub.ui.theme.CustomColors
 import me.rerere.rikkahub.utils.plus
@@ -156,6 +157,17 @@ fun SettingRemoteTTSPage(vm: SettingVM = koinViewModel()) {
                         )
                     }
                 }
+
+                // 采样参数（精细控制）：9 个参数各自 null = 不发送 = 保留引擎默认值
+                item {
+                    CardGroup(title = { Text(stringResource(R.string.setting_remote_tts_group_sampling)) }) {
+                        remoteSamplingItems(
+                            setting = target,
+                            onValueChange = ::updateRemoteProvider,
+                        )
+                    }
+                }
+                // 克隆注册（下一步）：插在这个位置 —— 采样参数之后、内置 TTS 开关之前
             }
 
             item {
