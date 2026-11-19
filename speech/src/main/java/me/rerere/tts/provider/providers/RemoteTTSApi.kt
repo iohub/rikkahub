@@ -67,7 +67,7 @@ class RemoteTTSApiException(
  * 远程 TTS 服务的控制面 API (无状态, 每次调用自行发请求)。
  *
  * 覆盖服务端除合成 (`POST /audio/speech`, 见 [RemoteTTSProvider]) 之外的管理接口:
- * - `GET  {baseUrl}/health`               -> [health]
+ * - `GET  {baseUrl}/health`               -> [health] (可选端点, 详见 [health])
  * - `GET  {baseUrl}/models`               -> [listModels]
  * - `GET  {baseUrl}/audio/voices`         -> [listVoices]
  * - `POST {baseUrl}/audio/voices` (wav)   -> [registerVoiceWithWav]
@@ -92,7 +92,13 @@ class RemoteTTSApi {
         .writeTimeout(120, TimeUnit.SECONDS)
         .build()
 
-    /** `GET /health`, 返回 `status == "ok"` */
+    /**
+     * `GET {baseUrl}/health`, 返回 `status == "ok"`。
+     *
+     * 注意: 该端点是**可选**的, OpenAI 规范里并不存在。部分自建服务把健康检查挂在根路径
+     * `/health` (而不是 `{baseUrl}/health`), 或者干脆不实现, 于是这里会抛 [RemoteTTSApiException]
+     * (典型为 404)。**调用方不得据此判定服务不可用** —— 连通性应看 [listModels]。
+     */
     suspend fun health(setting: TTSProviderSetting.RemoteTTS): Boolean = withContext(Dispatchers.IO) {
         val body = client.executeText(
             requestBuilder(setting, remoteTtsEndpoint(setting.baseUrl, "health")).get().build()

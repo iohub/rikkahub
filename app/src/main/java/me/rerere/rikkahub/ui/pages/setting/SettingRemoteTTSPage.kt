@@ -2,6 +2,7 @@ package me.rerere.rikkahub.ui.pages.setting
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -135,20 +136,31 @@ fun SettingRemoteTTSPage(vm: SettingVM = koinViewModel()) {
         }
     }
 
-    /** health + models 两个接口，确认地址/密钥/模型都是通的 */
+    /**
+     * 以 `GET {baseUrl}/models` 作为**唯一硬判据**：它能同时验证地址、密钥和模型是否可用。
+     *
+     * `/health` 不是 OpenAI 规范里的端点，只是服务端的可选项：不少自建实现把它挂在根路径
+     * `/health`（而不是 `{baseUrl}/health`），或干脆不实现，请求会直接 404。所以这里不再拿
+     * health 当前置判据，只在 models 成功之后做一次 best-effort 探测，失败静默忽略。
+     */
     suspend fun testConnection(provider: TTSProviderSetting.RemoteTTS) {
         testing = true
         testError = null
         testModels = null
         try {
-            if (!api.health(provider)) {
-                testError = context.getString(R.string.setting_remote_tts_connection_unhealthy)
-                return
-            }
             val models = api.listModels(provider)
             testModels = models
             // 克隆区预警复用同一份探测结果：命中 customvoice / voicedesign 就提前提示
             detectedModels = models
+            // best-effort 探一下 /health：只留日志，绝不设置 testError —— 下方 UI 的 when 里
+            // error 优先于 models，一旦置位就会盖掉上面的成功文案，重新造成误报。
+            try {
+                api.health(provider)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.d(TAG, "health probe ignored: ${e.readableMessage()}")
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -289,7 +301,8 @@ fun SettingRemoteTTSPage(vm: SettingVM = koinViewModel()) {
                     }
                 }
 
-                // 连接状态：health 判活 + models 取模型列表，一次点按就能确认地址/密钥/模型
+                // 连接状态：以 /models 取模型列表为硬判据，一次点按就能确认地址/密钥/模型
+                // （/health 只是可选探测，通过与否不影响这里的成败展示）
                 item {
                     CardGroup(title = { Text(stringResource(R.string.setting_remote_tts_group_connection)) }) {
                         formItem(
@@ -508,6 +521,8 @@ private const val CLONE_MAX_UPLOAD_BYTES: Long = 20L * 1024 * 1024
 
 /** 音色列表自动刷新的防抖窗口：逐字输入 baseUrl 时不至于每一击都发一次请求 */
 private const val VOICE_REFRESH_DEBOUNCE_MS = 500L
+
+private const val TAG = "SettingRemoteTTSPage"
 
 /** customvoice / voicedesign 类型模型不支持克隆注册（服务端返回 400），用于克隆区提前预警 */
 private val CLONE_UNSUPPORTED_MODEL_PATTERN = Regex(
