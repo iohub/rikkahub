@@ -60,11 +60,26 @@ fun Settings.getAssistantById(id: Uuid): Assistant? {
 fun Settings.getQuickMessagesOfAssistant(assistant: Assistant) =
     quickMessages.filter { it.id in assistant.quickMessageIds }
 
-/** 当前选中的 TTS 提供商，选中的 ID 已不存在时回退到第一个。 */
+/**
+ * 当前选中的 TTS 提供商，选中的 ID 已不存在时回退到第一个。
+ *
+ * 内置系统 TTS 关闭（[Settings.enableBuiltInTts] = false）时永不返回它：按 ID 命中的是系统 TTS 也当没命中，
+ * 改按 [fallbackTTSProvider] 的顺序回退到自建的远程 TTS。
+ */
 fun Settings.getSelectedTTSProvider(): TTSProviderSetting? {
-    return selectedTTSProviderId?.let { id ->
-        ttsProviders.find { it.id == id }
-    } ?: ttsProviders.firstOrNull()
+    return ttsProviders.find { provider ->
+        provider.id == selectedTTSProviderId && (enableBuiltInTts || provider !is TTSProviderSetting.SystemTTS)
+    } ?: ttsProviders.fallbackTTSProvider(allowSystemTTS = enableBuiltInTts)
+}
+
+/**
+ * 选中项不可用时的回退顺序：固定的默认远程 TTS → 列表第一个。
+ *
+ * [allowSystemTTS] 为 false 时内置系统 TTS 不参与回退，列表里只剩它时返回 null。
+ */
+fun List<TTSProviderSetting>.fallbackTTSProvider(allowSystemTTS: Boolean): TTSProviderSetting? {
+    val candidates = if (allowSystemTTS) this else filter { it !is TTSProviderSetting.SystemTTS }
+    return candidates.find { it.id == DEFAULT_REMOTE_TTS_ID } ?: candidates.firstOrNull()
 }
 
 /** 当前选中的 ASR 提供商，未选择或选中的 ID 已不存在时回退到第一个。 */

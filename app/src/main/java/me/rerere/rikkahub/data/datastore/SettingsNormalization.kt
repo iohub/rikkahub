@@ -2,7 +2,7 @@ package me.rerere.rikkahub.data.datastore
 
 /** 读盘后和每次修改后都要过一遍，保证内存里的设置始终是规整的。 */
 internal fun Settings.normalized(): Settings =
-    withBuiltInDefaults().withoutInvalidReferences().withValuesInRange()
+    withBuiltInDefaults().withoutInvalidReferences().withValuesInRange().withUsableTTSProvider()
 
 // 补齐缺失的内置提供商/助手/TTS，内置提供商和推荐提供商的描述信息始终以代码里的为准
 internal fun Settings.withBuiltInDefaults(): Settings {
@@ -112,6 +112,18 @@ private fun Settings.withValuesInRange(): Settings = copy(
         )
     },
 )
+
+/**
+ * 内置系统 TTS 关闭时不选中它，选中的 ID 已失效时按 [fallbackTTSProvider] 的顺序改选。
+ *
+ * 放在最后：先补齐内置 TTS、去重，回退时列表里才有默认的远程 TTS 可选。
+ */
+private fun Settings.withUsableTTSProvider(): Settings {
+    val selected = ttsProviders.find { it.id == selectedTTSProviderId }
+    if (selected != null && (enableBuiltInTts || selected !is TTSProviderSetting.SystemTTS)) return this
+    val fallback = ttsProviders.fallbackTTSProvider(allowSystemTTS = enableBuiltInTts) ?: return this
+    return if (fallback.id == selectedTTSProviderId) this else copy(selectedTTSProviderId = fallback.id)
+}
 
 /** 自动压缩触发比例的可选范围，设置页的滑块也用它 */
 val AUTO_COMPRESS_THRESHOLD_RANGE = 0.5f..0.95f

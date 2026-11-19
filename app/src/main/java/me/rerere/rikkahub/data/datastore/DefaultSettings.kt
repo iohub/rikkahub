@@ -36,7 +36,18 @@ internal val DEFAULT_ASSISTANTS = listOf(
 )
 
 val DEFAULT_SYSTEM_TTS_ID = Uuid.parse("026a01a2-c3a0-4fd5-8075-80e03bdef200")
+
+// 默认使用的自建远程 TTS，固定 id 才能在关掉内置 TTS 后稳定回退到它
+val DEFAULT_REMOTE_TTS_ID = Uuid.parse("5c1f7a2e-9b3d-4a6e-8f21-6d0b7c4e5a13")
+
 internal val DEFAULT_TTS_PROVIDERS = listOf(
+    TTSProviderSetting.RemoteTTS(
+        id = DEFAULT_REMOTE_TTS_ID,
+        name = "Remote TTS",
+        baseUrl = "http://127.0.0.1:8080/v1",
+        model = "qwen3-tts-base",
+    ),
+    // 内置系统 TTS 默认关闭（Settings.enableBuiltInTts），但条目保留在列表里，打开开关即可再选
     TTSProviderSetting.SystemTTS(
         id = DEFAULT_SYSTEM_TTS_ID,
         name = "",

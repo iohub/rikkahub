@@ -28,6 +28,7 @@ import me.rerere.rikkahub.ui.components.ui.CardGroupScope
 import me.rerere.tts.provider.TTSProviderSetting
 import me.rerere.ui.components.OutlinedNumberInput
 import me.rerere.ui.components.SelectTextField
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 @Composable
 fun TTSProviderConfigure(
@@ -59,6 +60,7 @@ fun TTSProviderConfigure(
                         is TTSProviderSetting.FishAudio -> "Fish Audio"
                         is TTSProviderSetting.Volcengine -> "火山引擎"
                         is TTSProviderSetting.DeepSeek -> "DeepSeek"
+                        is TTSProviderSetting.RemoteTTS -> stringResource(R.string.setting_tts_page_provider_remote)
                     },
                     options = TTSProviderSetting.Types,
                     readOnly = true,
@@ -78,6 +80,7 @@ fun TTSProviderConfigure(
                             TTSProviderSetting.Volcengine::class -> "火山引擎"
                             TTSProviderSetting.Step::class -> "Step"
                             TTSProviderSetting.DeepSeek::class -> "DeepSeek"
+                            TTSProviderSetting.RemoteTTS::class -> stringResource(R.string.setting_tts_page_provider_remote)
                             else -> providerClass.simpleName ?: "Unknown"
                         }
                     },
@@ -142,6 +145,11 @@ fun TTSProviderConfigure(
 
                             TTSProviderSetting.DeepSeek::class -> TTSProviderSetting.DeepSeek(id = setting.id)
 
+                            TTSProviderSetting.RemoteTTS::class -> TTSProviderSetting.RemoteTTS(
+                                id = setting.id,
+                                name = "Remote TTS"
+                            )
+
                             else -> setting
                         }
                         onValueChange(newSetting)
@@ -180,6 +188,7 @@ fun TTSProviderConfigure(
                 is TTSProviderSetting.Step -> stepTTSItems(setting, onValueChange)
                 is TTSProviderSetting.Volcengine -> volcengineTTSItems(setting, onValueChange)
                 is TTSProviderSetting.DeepSeek -> deepSeekTTSItems(setting, onValueChange)
+                is TTSProviderSetting.RemoteTTS -> remoteTTSItems(setting, onValueChange)
             }
         }
     }

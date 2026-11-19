@@ -149,6 +149,7 @@ internal val SETTINGS_FIELDS: List<SettingsField<*, *>> = with(SettingsStore) {
         // TTS
         json(TTS_PROVIDERS, Settings::ttsProviders) { copy(ttsProviders = it) },
         uuid(SELECTED_TTS_PROVIDER, Settings::selectedTTSProviderId) { copy(selectedTTSProviderId = it) },
+        plain(ENABLE_BUILT_IN_TTS, Settings::enableBuiltInTts) { copy(enableBuiltInTts = it) },
         plain(DEFAULT_TTS_PLAYBACK_SPEED, Settings::defaultTTSPlaybackSpeed) { copy(defaultTTSPlaybackSpeed = it) },
 
         // ASR

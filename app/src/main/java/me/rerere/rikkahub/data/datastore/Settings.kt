@@ -73,7 +73,14 @@ data class Settings(
     val uploadS3Config: S3Config = S3Config(),
     val mediaGenerationProviders: List<MediaGenerationProviderSetting> = emptyList(),
     val ttsProviders: List<TTSProviderSetting> = DEFAULT_TTS_PROVIDERS,
-    val selectedTTSProviderId: Uuid = DEFAULT_SYSTEM_TTS_ID,
+    val selectedTTSProviderId: Uuid = DEFAULT_REMOTE_TTS_ID,
+    /**
+     * 内置的系统 TTS（[TTSProviderSetting.SystemTTS]）是否可用。
+     *
+     * 关闭时它不出现在语音设置列表里，也不会被选中：归一化与 [getSelectedTTSProvider] 都不会返回它。
+     * 默认关闭，默认使用自建的远程 TTS。
+     */
+    val enableBuiltInTts: Boolean = false,
     val defaultTTSPlaybackSpeed: Float = 1.0f,
     val asrProviders: List<ASRProviderSetting> = emptyList(),
     val selectedASRProviderId: Uuid? = null,
