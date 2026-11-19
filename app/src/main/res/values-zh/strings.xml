@@ -1079,6 +1079,22 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_tts_page_base_url">基础URL</string>
   <string name="setting_tts_page_base_url_description">API基础URL端点</string>
   <string name="setting_tts_page_base_url_placeholder">https://api.openai.com/v1</string>
+  <!-- Remote TTS (self-hosted OpenAI-compatible) -->
+  <string name="setting_tts_page_base_url_invalid">服务地址格式不正确，需要以 http:// 或 https:// 开头</string>
+  <string name="setting_tts_page_base_url_self_hosted_description">请求发往 {Base URL}/audio/speech，需要包含 /v1 这类版本前缀</string>
+  <string name="setting_tts_page_api_key_optional_description">留空则不发送 Authorization 头，适合无鉴权的自建服务</string>
+  <string name="setting_tts_page_model_optional_description">服务端的模型 alias，留空不下发，由服务端选择默认模型</string>
+  <string name="setting_tts_page_voice_optional_description">克隆音色名，留空时使用服务端默认音色</string>
+  <string name="setting_tts_page_language">语言</string>
+  <string name="setting_tts_page_language_optional_description">覆盖服务端的默认语言，如 English / Chinese，留空不下发</string>
+  <string name="setting_tts_page_response_format">响应格式</string>
+  <string name="setting_tts_page_response_format_description">wav 返回完整音频文件；pcm 返回 s16le 裸流，播放时按采样率补 WAV 头</string>
+  <string name="setting_tts_page_sample_rate">采样率</string>
+  <string name="setting_tts_page_sample_rate_pcm_description">pcm 裸流的采样率，单位 Hz</string>
+  <string name="setting_tts_page_random_seed">随机种子</string>
+  <string name="setting_tts_page_random_seed_description">开启时不下发 seed，由服务端随机采样</string>
+  <string name="setting_tts_page_seed">种子</string>
+  <string name="setting_tts_page_seed_description">固定采样种子便于复现，取 0 及以上的整数</string>
   <string name="setting_tts_page_default_name">系统TTS</string>
   <string name="setting_tts_page_edit_provider">编辑提供商</string>
   <string name="setting_tts_page_emotion">情感</string>

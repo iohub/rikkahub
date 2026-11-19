@@ -962,6 +962,22 @@
   <string name="setting_tts_page_base_url">Базовый URL</string>
   <string name="setting_tts_page_base_url_description">Базовый URL-адрес конечной точки API</string>
   <string name="setting_tts_page_base_url_placeholder">https://api.openai.com/v1</string>
+  <!-- Remote TTS (self-hosted OpenAI-compatible) -->
+  <string name="setting_tts_page_base_url_invalid">Неверный формат адреса сервера: он должен начинаться с http:// или https://</string>
+  <string name="setting_tts_page_base_url_self_hosted_description">Запросы отправляются на {Base URL}/audio/speech, поэтому нужен префикс версии, например /v1</string>
+  <string name="setting_tts_page_api_key_optional_description">Оставьте пустым, чтобы не отправлять заголовок Authorization — подходит для собственного сервера без аутентификации</string>
+  <string name="setting_tts_page_model_optional_description">Псевдоним модели на сервере. Оставьте пустым, чтобы не отправлять его и использовать модель сервера по умолчанию</string>
+  <string name="setting_tts_page_voice_optional_description">Имя клонированного голоса. Оставьте пустым, чтобы использовать голос сервера по умолчанию</string>
+  <string name="setting_tts_page_language">Язык</string>
+  <string name="setting_tts_page_language_optional_description">Переопределяет язык сервера по умолчанию, например English / Chinese. Оставьте пустым, чтобы не отправлять</string>
+  <string name="setting_tts_page_response_format">Формат ответа</string>
+  <string name="setting_tts_page_response_format_description">wav возвращает полный аудиофайл; pcm возвращает необработанный поток s16le, к которому при воспроизведении добавляется заголовок WAV с указанной частотой дискретизации</string>
+  <string name="setting_tts_page_sample_rate">Частота дискретизации</string>
+  <string name="setting_tts_page_sample_rate_pcm_description">Частота дискретизации необработанного потока pcm в Гц</string>
+  <string name="setting_tts_page_random_seed">Случайное зерно</string>
+  <string name="setting_tts_page_random_seed_description">Если включено, seed не отправляется и сервер выбирает его случайно</string>
+  <string name="setting_tts_page_seed">Зерно</string>
+  <string name="setting_tts_page_seed_description">Фиксированное зерно дискретизации для воспроизводимости, целое число от 0</string>
   <string name="setting_tts_page_default_name">Системный TTS</string>
   <string name="setting_tts_page_edit_provider">Редактировать поставщика</string>
   <string name="setting_tts_page_emotion">Эмоция</string>

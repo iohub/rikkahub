@@ -2,18 +2,22 @@ package me.rerere.rikkahub.ui.pages.setting.components
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -25,7 +29,6 @@ import me.rerere.hugeicons.stroke.ViewOff
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.ui.components.ui.CardGroup
 import me.rerere.rikkahub.ui.components.ui.CardGroupScope
-import me.rerere.rikkahub.ui.components.ui.switchItem
 import me.rerere.tts.provider.TTSProviderSetting
 import me.rerere.ui.components.OutlinedNumberInput
 import me.rerere.ui.components.SelectTextField
@@ -1419,9 +1422,9 @@ internal fun CardGroupScope.remoteTTSItems(
         supportingContent = {
             Text(
                 if (baseUrlInvalid) {
-                    "服务地址格式不正确，需要以 http:// 或 https:// 开头"
+                    stringResource(R.string.setting_tts_page_base_url_invalid)
                 } else {
-                    "请求发往 {Base URL}/audio/speech，需要包含 /v1 这类版本前缀"
+                    stringResource(R.string.setting_tts_page_base_url_self_hosted_description)
                 }
             )
         }
@@ -1439,13 +1442,13 @@ internal fun CardGroupScope.remoteTTSItems(
     // API Key
     formItem(
         headlineContent = { Text(stringResource(R.string.setting_tts_page_api_key)) },
-        supportingContent = { Text("留空则不发送 Authorization 头，适合无鉴权的自建服务") }
+        supportingContent = { Text(stringResource(R.string.setting_tts_page_api_key_optional_description)) }
     ) {
         OutlinedTextField(
             value = setting.apiKey,
             onValueChange = { onValueChange(setting.copy(apiKey = it)) },
             modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("sk-...") },
+            placeholder = { Text(stringResource(R.string.setting_tts_page_api_key_placeholder_openai)) },
             singleLine = true,
         )
     }
@@ -1453,7 +1456,7 @@ internal fun CardGroupScope.remoteTTSItems(
     // Model
     formItem(
         headlineContent = { Text(stringResource(R.string.setting_tts_page_model)) },
-        supportingContent = { Text("服务端的模型 alias，留空不下发，由服务端选择默认模型") }
+        supportingContent = { Text(stringResource(R.string.setting_tts_page_model_optional_description)) }
     ) {
         OutlinedTextField(
             value = setting.model,
@@ -1467,7 +1470,7 @@ internal fun CardGroupScope.remoteTTSItems(
     // Voice
     formItem(
         headlineContent = { Text(stringResource(R.string.setting_tts_page_voice)) },
-        supportingContent = { Text("克隆音色名，留空时使用服务端默认音色") }
+        supportingContent = { Text(stringResource(R.string.setting_tts_page_voice_optional_description)) }
     ) {
         OutlinedTextField(
             value = setting.voice,
@@ -1480,8 +1483,8 @@ internal fun CardGroupScope.remoteTTSItems(
 
     // Language
     formItem(
-        headlineContent = { Text("Language") },
-        supportingContent = { Text("覆盖服务端的默认语言，如 English / Chinese，留空不下发") }
+        headlineContent = { Text(stringResource(R.string.setting_tts_page_language)) },
+        supportingContent = { Text(stringResource(R.string.setting_tts_page_language_optional_description)) }
     ) {
         OutlinedTextField(
             value = setting.language,
@@ -1495,8 +1498,8 @@ internal fun CardGroupScope.remoteTTSItems(
     // Response Format
     val formats = listOf("wav", "mp3", "ogg", "opus", "aac", "pcm")
     formItem(
-        headlineContent = { Text("Response Format") },
-        supportingContent = { Text("wav 返回完整音频文件；pcm 返回 s16le 裸流，播放时按采样率补 WAV 头") }
+        headlineContent = { Text(stringResource(R.string.setting_tts_page_response_format)) },
+        supportingContent = { Text(stringResource(R.string.setting_tts_page_response_format_description)) }
     ) {
         SelectTextField(
             value = setting.responseFormat,
@@ -1510,8 +1513,8 @@ internal fun CardGroupScope.remoteTTSItems(
     // Sample Rate：只有裸 PCM 需要
     if (setting.responseFormat.trim().equals("pcm", ignoreCase = true)) {
         formItem(
-            headlineContent = { Text("Sample Rate") },
-            supportingContent = { Text("pcm 裸流的采样率，单位 Hz") }
+            headlineContent = { Text(stringResource(R.string.setting_tts_page_sample_rate)) },
+            supportingContent = { Text(stringResource(R.string.setting_tts_page_sample_rate_pcm_description)) }
         ) {
             OutlinedNumberInput(
                 value = setting.sampleRate,
@@ -1536,26 +1539,48 @@ internal fun CardGroupScope.remoteTTSItems(
     }
 
     // Seed：负数表示不下发。数字键盘打不出负号，所以用开关表达「-1 = 随机」，
-    // 关掉开关才显示固定种子的输入框（0 及以上），这样 -1 随时能设回去
+    // 关掉开关才显示固定种子的输入框（0 及以上），这样 -1 随时能设回去。
+    //
+    // 开关和输入框必须放在同一个 formItem 的 content 里：CardGroup 的 content 是普通的
+    // CardGroupScope.() -> Unit（只负责录制条目，不是 @Composable），函数体里用不了 remember；
+    // 只有 formItem 的 content（@Composable ColumnScope.() -> Unit）能持有组合状态，
+    // 用它记住上一次的固定种子，关闭开关时恢复该值而不是固定写 0
     val randomSeed = setting.seed < 0
-    switchItem(
-        checked = randomSeed,
-        onCheckedChange = { random ->
-            onValueChange(setting.copy(seed = if (random) -1 else 0))
-        },
-        supportingContent = { Text("开启时不下发 seed，由服务端随机采样") },
-        headlineContent = { Text("随机种子") },
-    )
-    if (!randomSeed) {
-        formItem(
-            headlineContent = { Text("Seed") },
-            supportingContent = { Text("固定采样种子便于复现，取 0 及以上的整数") }
+    formItem(
+        headlineContent = { Text(stringResource(R.string.setting_tts_page_random_seed)) },
+        supportingContent = { Text(stringResource(R.string.setting_tts_page_random_seed_description)) },
+    ) {
+        var lastFixedSeed by remember(setting.id) {
+            mutableStateOf(if (setting.seed < 0) 0 else setting.seed)
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
+            Switch(
+                checked = randomSeed,
+                onCheckedChange = { random ->
+                    onValueChange(setting.copy(seed = if (random) -1 else lastFixedSeed))
+                },
+            )
+        }
+        if (!randomSeed) {
+            Text(
+                text = stringResource(R.string.setting_tts_page_seed_description),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             OutlinedNumberInput(
                 value = setting.seed,
-                onValueChange = { onValueChange(setting.copy(seed = it.coerceAtLeast(0))) },
+                onValueChange = { value ->
+                    val fixedSeed = value.coerceAtLeast(0)
+                    // 记下来：再次关闭随机开关时用它恢复
+                    lastFixedSeed = fixedSeed
+                    onValueChange(setting.copy(seed = fixedSeed))
+                },
                 modifier = Modifier.fillMaxWidth(),
-                label = "0",
+                label = stringResource(R.string.setting_tts_page_seed),
             )
         }
     }

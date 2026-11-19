@@ -1117,6 +1117,22 @@
   <string name="setting_tts_page_base_url">Base URL</string>
   <string name="setting_tts_page_base_url_description">API base URL endpoint</string>
   <string name="setting_tts_page_base_url_placeholder">https://api.openai.com/v1</string>
+  <!-- Remote TTS (self-hosted OpenAI-compatible) -->
+  <string name="setting_tts_page_base_url_invalid">Invalid server URL, it must start with http:// or https://</string>
+  <string name="setting_tts_page_base_url_self_hosted_description">Requests go to {Base URL}/audio/speech, so include a version prefix such as /v1</string>
+  <string name="setting_tts_page_api_key_optional_description">Leave empty to send no Authorization header, which suits self-hosted services without auth</string>
+  <string name="setting_tts_page_model_optional_description">Model alias on the server. Leave empty to skip it and let the server choose its default model</string>
+  <string name="setting_tts_page_voice_optional_description">Cloned voice name. Leave empty to use the server default voice</string>
+  <string name="setting_tts_page_language">Language</string>
+  <string name="setting_tts_page_language_optional_description">Overrides the server default language, e.g. English / Chinese. Leave empty to skip it</string>
+  <string name="setting_tts_page_response_format">Response Format</string>
+  <string name="setting_tts_page_response_format_description">wav returns a complete audio file; pcm returns a raw s16le stream that gets a WAV header added at the sample rate during playback</string>
+  <string name="setting_tts_page_sample_rate">Sample Rate</string>
+  <string name="setting_tts_page_sample_rate_pcm_description">Sample rate of the raw pcm stream in Hz</string>
+  <string name="setting_tts_page_random_seed">Random seed</string>
+  <string name="setting_tts_page_random_seed_description">When enabled the seed is not sent and the server samples randomly</string>
+  <string name="setting_tts_page_seed">Seed</string>
+  <string name="setting_tts_page_seed_description">Fixed sampling seed for reproducibility, use an integer of 0 or above</string>
   <string name="setting_tts_page_default_name">System TTS</string>
   <string name="setting_tts_page_default_playback_speed">Default playback speed</string>
   <string name="setting_tts_page_default_playback_speed_description">Applied locally to every TTS provider without changing its synthesis settings.</string>

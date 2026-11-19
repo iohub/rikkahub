@@ -962,6 +962,22 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="setting_tts_page_base_url">ベースURL</string>
   <string name="setting_tts_page_base_url_description">APIベースURLエンドポイント</string>
   <string name="setting_tts_page_base_url_placeholder">https://api.openai.com/v1</string>
+  <!-- Remote TTS (self-hosted OpenAI-compatible) -->
+  <string name="setting_tts_page_base_url_invalid">サーバー URL の形式が正しくありません。http:// または https:// で始まる必要があります</string>
+  <string name="setting_tts_page_base_url_self_hosted_description">リクエストは {Base URL}/audio/speech に送信されるため、/v1 などのバージョンプレフィックスを含めてください</string>
+  <string name="setting_tts_page_api_key_optional_description">空欄の場合は Authorization ヘッダーを送信しません。認証のない自前サービスに適しています</string>
+  <string name="setting_tts_page_model_optional_description">サーバー側のモデルエイリアスです。空欄なら送信せず、サーバーの既定モデルが使われます</string>
+  <string name="setting_tts_page_voice_optional_description">クローンした音声名です。空欄の場合はサーバーの既定音声が使われます</string>
+  <string name="setting_tts_page_language">言語</string>
+  <string name="setting_tts_page_language_optional_description">サーバーの既定言語を上書きします（例: English / Chinese）。空欄なら送信しません</string>
+  <string name="setting_tts_page_response_format">レスポンス形式</string>
+  <string name="setting_tts_page_response_format_description">wav は完全な音声ファイルを返します。pcm は s16le の生ストリームを返し、再生時にサンプルレートに合わせて WAV ヘッダーを付加します</string>
+  <string name="setting_tts_page_sample_rate">サンプルレート</string>
+  <string name="setting_tts_page_sample_rate_pcm_description">pcm 生ストリームのサンプルレート（Hz）</string>
+  <string name="setting_tts_page_random_seed">ランダムシード</string>
+  <string name="setting_tts_page_random_seed_description">有効にすると seed を送信せず、サーバーがランダムにサンプリングします</string>
+  <string name="setting_tts_page_seed">シード</string>
+  <string name="setting_tts_page_seed_description">再現性のための固定サンプリングシードです。0 以上の整数を指定してください</string>
   <string name="setting_tts_page_default_name">システムTTS</string>
   <string name="setting_tts_page_edit_provider">プロバイダーを編集</string>
   <string name="setting_tts_page_emotion">感情</string>

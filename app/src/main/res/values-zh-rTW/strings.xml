@@ -960,6 +960,22 @@
   <string name="setting_tts_page_base_url">基礎URL</string>
   <string name="setting_tts_page_base_url_description">API基礎URL端點</string>
   <string name="setting_tts_page_base_url_placeholder">https://api.openai.com/v1</string>
+  <!-- Remote TTS (self-hosted OpenAI-compatible) -->
+  <string name="setting_tts_page_base_url_invalid">服務位址格式不正確，需以 http:// 或 https:// 開頭</string>
+  <string name="setting_tts_page_base_url_self_hosted_description">請求會送往 {Base URL}/audio/speech，需包含 /v1 這類版本前綴</string>
+  <string name="setting_tts_page_api_key_optional_description">留空則不傳送 Authorization 標頭，適合無驗證的自架服務</string>
+  <string name="setting_tts_page_model_optional_description">伺服器的模型 alias，留空不下發，由伺服器選擇預設模型</string>
+  <string name="setting_tts_page_voice_optional_description">複製音色名稱，留空時使用伺服器預設音色</string>
+  <string name="setting_tts_page_language">語言</string>
+  <string name="setting_tts_page_language_optional_description">覆寫伺服器的預設語言，例如 English / Chinese，留空不下發</string>
+  <string name="setting_tts_page_response_format">回應格式</string>
+  <string name="setting_tts_page_response_format_description">wav 回傳完整音訊檔；pcm 回傳 s16le 裸流，播放時依取樣率補上 WAV 標頭</string>
+  <string name="setting_tts_page_sample_rate">取樣率</string>
+  <string name="setting_tts_page_sample_rate_pcm_description">pcm 裸流的取樣率，單位 Hz</string>
+  <string name="setting_tts_page_random_seed">隨機種子</string>
+  <string name="setting_tts_page_random_seed_description">開啟時不下發 seed，由伺服器隨機取樣</string>
+  <string name="setting_tts_page_seed">種子</string>
+  <string name="setting_tts_page_seed_description">固定取樣種子便於重現，取 0 以上的整數</string>
   <string name="setting_tts_page_default_name">系統TTS</string>
   <string name="setting_tts_page_edit_provider">編輯提供商</string>
   <string name="setting_tts_page_emotion">情緒</string>

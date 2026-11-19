@@ -1156,6 +1156,22 @@
   <string name="setting_tts_page_base_url">عنوان URL الأساسي</string>
   <string name="setting_tts_page_base_url_description">نقطة نهاية عنوان URL الأساسي لـ API</string>
   <string name="setting_tts_page_base_url_placeholder">https://api.openai.com/v1</string>
+  <!-- Remote TTS (self-hosted OpenAI-compatible) -->
+  <string name="setting_tts_page_base_url_invalid">عنوان URL للخادم غير صالح، يجب أن يبدأ بـ http:// أو https://</string>
+  <string name="setting_tts_page_base_url_self_hosted_description">تُرسل الطلبات إلى {Base URL}/audio/speech، لذا يجب تضمين بادئة إصدار مثل /v1</string>
+  <string name="setting_tts_page_api_key_optional_description">اتركه فارغًا لعدم إرسال ترويسة Authorization، وهو مناسب للخدمات المستضافة ذاتيًا بدون مصادقة</string>
+  <string name="setting_tts_page_model_optional_description">اسم بديل للنموذج على الخادم. اتركه فارغًا لعدم إرساله وليختار الخادم نموذجه الافتراضي</string>
+  <string name="setting_tts_page_voice_optional_description">اسم الصوت المستنسخ. اتركه فارغًا لاستخدام الصوت الافتراضي للخادم</string>
+  <string name="setting_tts_page_language">اللغة</string>
+  <string name="setting_tts_page_language_optional_description">يتجاوز اللغة الافتراضية للخادم، مثل English / Chinese. اتركه فارغًا لعدم إرساله</string>
+  <string name="setting_tts_page_response_format">صيغة الاستجابة</string>
+  <string name="setting_tts_page_response_format_description">تُرجع wav ملفًا صوتيًا كاملًا؛ وتُرجع pcm تدفقًا خامًا من نوع s16le يُضاف إليه رأس WAV بمعدل العينات عند التشغيل</string>
+  <string name="setting_tts_page_sample_rate">معدل العينات</string>
+  <string name="setting_tts_page_sample_rate_pcm_description">معدل عينات تدفق pcm الخام بوحدة هرتز</string>
+  <string name="setting_tts_page_random_seed">بذرة عشوائية</string>
+  <string name="setting_tts_page_random_seed_description">عند التفعيل لا تُرسل البذرة ويختار الخادم عينة عشوائية</string>
+  <string name="setting_tts_page_seed">البذرة</string>
+  <string name="setting_tts_page_seed_description">بذرة أخذ عينات ثابتة لإمكانية التكرار، عدد صحيح 0 أو أكبر</string>
   <string name="setting_tts_page_default_name">TTS النظام</string>
   <string name="setting_tts_page_default_playback_speed">سرعة التشغيل الافتراضية</string>
   <string name="setting_tts_page_default_playback_speed_description">يُطبَّق محليًا على كل مزوّد TTS دون تغيير إعدادات التخليق الخاصة به.</string>

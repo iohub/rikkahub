@@ -1057,6 +1057,22 @@
   <string name="setting_tts_page_base_url">Basis-URL</string>
   <string name="setting_tts_page_base_url_description">API-Basis-URL-Endpunkt</string>
   <string name="setting_tts_page_base_url_placeholder">https://api.openai.com/v1</string>
+  <!-- Remote TTS (self-hosted OpenAI-compatible) -->
+  <string name="setting_tts_page_base_url_invalid">Ungültige Server-URL: Sie muss mit http:// oder https:// beginnen</string>
+  <string name="setting_tts_page_base_url_self_hosted_description">Anfragen gehen an {Base URL}/audio/speech, daher ist ein Versionspräfix wie /v1 nötig</string>
+  <string name="setting_tts_page_api_key_optional_description">Leer lassen, um keinen Authorization-Header zu senden – passend für selbst gehostete Dienste ohne Authentifizierung</string>
+  <string name="setting_tts_page_model_optional_description">Modell-Alias des Servers. Leer lassen, um ihn nicht zu senden; der Server wählt dann sein Standardmodell</string>
+  <string name="setting_tts_page_voice_optional_description">Name der geklonten Stimme. Leer lassen, um die Standardstimme des Servers zu nutzen</string>
+  <string name="setting_tts_page_language">Sprache</string>
+  <string name="setting_tts_page_language_optional_description">Überschreibt die Standardsprache des Servers, z. B. English / Chinese. Leer lassen, um sie nicht zu senden</string>
+  <string name="setting_tts_page_response_format">Antwortformat</string>
+  <string name="setting_tts_page_response_format_description">wav liefert eine vollständige Audiodatei; pcm liefert einen rohen s16le-Stream, dem beim Abspielen ein WAV-Header mit der Abtastrate vorangestellt wird</string>
+  <string name="setting_tts_page_sample_rate">Abtastrate</string>
+  <string name="setting_tts_page_sample_rate_pcm_description">Abtastrate des rohen pcm-Streams in Hz</string>
+  <string name="setting_tts_page_random_seed">Zufälliger Seed</string>
+  <string name="setting_tts_page_random_seed_description">Aktiviert wird kein Seed gesendet und der Server sampelt zufällig</string>
+  <string name="setting_tts_page_seed">Seed</string>
+  <string name="setting_tts_page_seed_description">Fester Sampling-Seed für Reproduzierbarkeit, eine ganze Zahl ab 0</string>
   <string name="setting_tts_page_default_name">System-TTS</string>
   <string name="setting_tts_page_default_playback_speed">Standard-Wiedergabegeschwindigkeit</string>
   <string name="setting_tts_page_default_playback_speed_description">Wird lokal auf jeden TTS-Anbieter angewendet, ohne dessen Synthese-Einstellungen zu ändern.</string>

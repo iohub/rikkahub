@@ -962,6 +962,22 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="setting_tts_page_base_url">기본 URL</string>
   <string name="setting_tts_page_base_url_description">API 기본 URL 엔드포인트</string>
   <string name="setting_tts_page_base_url_placeholder">https://api.openai.com/v1</string>
+  <!-- Remote TTS (self-hosted OpenAI-compatible) -->
+  <string name="setting_tts_page_base_url_invalid">서버 URL 형식이 올바르지 않습니다. http:// 또는 https:// 로 시작해야 합니다</string>
+  <string name="setting_tts_page_base_url_self_hosted_description">요청은 {Base URL}/audio/speech 로 전송되므로 /v1 같은 버전 접두사를 포함해야 합니다</string>
+  <string name="setting_tts_page_api_key_optional_description">비워 두면 Authorization 헤더를 보내지 않습니다. 인증이 없는 자체 서버에 적합합니다</string>
+  <string name="setting_tts_page_model_optional_description">서버의 모델 별칭입니다. 비워 두면 전송하지 않으며 서버가 기본 모델을 선택합니다</string>
+  <string name="setting_tts_page_voice_optional_description">복제한 음색 이름입니다. 비워 두면 서버 기본 음색을 사용합니다</string>
+  <string name="setting_tts_page_language">언어</string>
+  <string name="setting_tts_page_language_optional_description">서버의 기본 언어를 덮어씁니다(예: English / Chinese). 비워 두면 전송하지 않습니다</string>
+  <string name="setting_tts_page_response_format">응답 형식</string>
+  <string name="setting_tts_page_response_format_description">wav 는 전체 오디오 파일을 반환합니다. pcm 은 s16le 원시 스트림을 반환하며 재생 시 샘플 레이트에 맞춰 WAV 헤더를 붙입니다</string>
+  <string name="setting_tts_page_sample_rate">샘플 레이트</string>
+  <string name="setting_tts_page_sample_rate_pcm_description">pcm 원시 스트림의 샘플 레이트(Hz)</string>
+  <string name="setting_tts_page_random_seed">랜덤 시드</string>
+  <string name="setting_tts_page_random_seed_description">켜면 seed 를 전송하지 않고 서버가 무작위로 샘플링합니다</string>
+  <string name="setting_tts_page_seed">시드</string>
+  <string name="setting_tts_page_seed_description">재현을 위한 고정 샘플링 시드입니다. 0 이상의 정수를 입력하세요</string>
   <string name="setting_tts_page_default_name">시스템 TTS</string>
   <string name="setting_tts_page_edit_provider">제공업체 편집</string>
   <string name="setting_tts_page_emotion">감정</string>
