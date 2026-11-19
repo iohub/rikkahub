@@ -113,7 +113,24 @@ private fun Settings.withValuesInRange(): Settings = copy(
             remotePort = tunnel.remotePort.coerceIn(0, 65535),
         )
     },
+    ttsProviders = ttsProviders.map { provider -> provider.withValuesInRange() },
 )
+
+/**
+ * 远程 TTS 的输出格式只有服务端列出的几种。
+ *
+ * 历史数据里可能残留 `mp3/ogg/opus/aac` 之类（服务端不认，合成会直接失败），
+ * 或任意采样率；读盘时统一收回到 wav / 24000。合法值原样保留。
+ */
+private fun TTSProviderSetting.withValuesInRange(): TTSProviderSetting {
+    if (this !is TTSProviderSetting.RemoteTTS) return this
+    val supportedFormats = TTSProviderSetting.RemoteTTS.REMOTE_TTS_RESPONSE_FORMATS
+    val supportedSampleRates = TTSProviderSetting.RemoteTTS.REMOTE_TTS_SAMPLE_RATES
+    return copy(
+        responseFormat = responseFormat.trim().lowercase().takeIf { it in supportedFormats } ?: "wav",
+        sampleRate = sampleRate.takeIf { it in supportedSampleRates } ?: 24000,
+    )
+}
 
 /**
  * 内置系统 TTS 关闭时不选中它，选中的 ID 已失效时按 [fallbackTTSProvider] 的顺序改选。

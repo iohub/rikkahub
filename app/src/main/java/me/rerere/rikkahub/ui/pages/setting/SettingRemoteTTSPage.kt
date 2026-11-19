@@ -1,5 +1,9 @@
 package me.rerere.rikkahub.ui.pages.setting
 
+import android.content.Context
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
@@ -9,36 +13,53 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.StopCircle
 import me.rerere.hugeicons.stroke.VolumeHigh
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.DEFAULT_REMOTE_TTS_ID
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.fallbackTTSProvider
+import me.rerere.rikkahub.data.files.FileUtils
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.components.ui.CardGroup
+import me.rerere.rikkahub.ui.components.ui.CardGroupScope
 import me.rerere.rikkahub.ui.components.ui.switchItem
 import me.rerere.rikkahub.ui.context.LocalTTSState
 import me.rerere.rikkahub.ui.context.LocalToaster
@@ -47,7 +68,10 @@ import me.rerere.rikkahub.ui.pages.setting.components.remoteTTSItems
 import me.rerere.rikkahub.ui.theme.CustomColors
 import me.rerere.rikkahub.utils.plus
 import me.rerere.tts.provider.TTSProviderSetting
+import me.rerere.tts.provider.providers.RemoteTTSApi
+import me.rerere.tts.provider.providers.RemoteVoiceInfo
 import me.rerere.ui.toast.ToastType
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import org.koin.androidx.compose.koinViewModel
 import kotlin.uuid.Uuid
 
@@ -77,6 +101,69 @@ fun SettingRemoteTTSPage(vm: SettingVM = koinViewModel()) {
         remoteProviders.firstOrNull { it.id == DEFAULT_REMOTE_TTS_ID } ?: remoteProviders.firstOrNull()
     }
 
+    // ---------------- 服务端控制面：音色列表 / 连接测试 / 克隆注册 ----------------
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    // 无状态，整个页面共用一个实例（内部持有 OkHttpClient）
+    val api = remember { RemoteTTSApi() }
+    var voices by remember { mutableStateOf<List<RemoteVoiceInfo>>(emptyList()) }
+    var voicesLoading by remember { mutableStateOf(false) }
+    var voicesError by remember { mutableStateOf<String?>(null) }
+    var testing by remember { mutableStateOf(false) }
+    var testModels by remember { mutableStateOf<List<String>?>(null) }
+    var testError by remember { mutableStateOf<String?>(null) }
+    // 克隆注册的表单状态提到 LazyColumn 元素之外：滚出屏幕再回来时已读进内存的参考音频不会丢
+    val cloneForm = remember { CloneVoiceForm() }
+
+    /** 拉一次音色列表；返回值供调用方判断「刚注册的音色是否已经出现在服务端列表里」 */
+    suspend fun loadVoices(provider: TTSProviderSetting.RemoteTTS): List<RemoteVoiceInfo> {
+        voicesLoading = true
+        voicesError = null
+        return try {
+            api.listVoices(provider).also { voices = it }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            voicesError = e.readableMessage()
+            voices
+        } finally {
+            voicesLoading = false
+        }
+    }
+
+    /** health + models 两个接口，确认地址/密钥/模型都是通的 */
+    suspend fun testConnection(provider: TTSProviderSetting.RemoteTTS) {
+        testing = true
+        testError = null
+        testModels = null
+        try {
+            if (!api.health(provider)) {
+                testError = context.getString(R.string.setting_remote_tts_connection_unhealthy)
+                return
+            }
+            testModels = api.listModels(provider)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            testError = context.getString(
+                R.string.setting_remote_tts_connection_failed,
+                e.readableMessage(),
+            )
+        } finally {
+            testing = false
+        }
+    }
+
+    // 地址/密钥/模型任一变化都重新拉一次：换端点、换凭据、换模型都可能换掉可用音色集合。
+    // baseUrl 为空或不是合法 URL 时不发请求，交给表单里的红色提示。
+    // 先 delay 一下当防抖：keys 变了会取消上一个协程，逐字输入 baseUrl 不会打出一串请求。
+    LaunchedEffect(target?.id, target?.baseUrl, target?.apiKey, target?.model) {
+        val provider = target ?: return@LaunchedEffect
+        if (provider.baseUrl.isBlank() || provider.baseUrl.toHttpUrlOrNull() == null) return@LaunchedEffect
+        delay(VOICE_REFRESH_DEBOUNCE_MS)
+        loadVoices(provider)
+    }
+
     val defaultTestText = stringResource(R.string.setting_remote_tts_test_text)
     var testText by rememberSaveable(defaultTestText) { mutableStateOf(defaultTestText) }
     // 试听走的是「全局选中」的 provider：目标条目没被选中时先切过去，等它生效（控制器报告可用）后再合成，
@@ -101,6 +188,21 @@ fun SettingRemoteTTSPage(vm: SettingVM = koinViewModel()) {
         vm.updateSettings { latest ->
             latest.copy(
                 ttsProviders = latest.ttsProviders.map { if (it.id == updated.id) updated else it }
+            )
+        }
+    }
+
+    // 只改 voice 一个字段：克隆注册/删除后回写，避免拿陈旧快照覆盖用户同时改过的其它字段
+    fun useVoice(providerId: Uuid, voice: String) {
+        vm.updateSettings { latest ->
+            latest.copy(
+                ttsProviders = latest.ttsProviders.map { provider ->
+                    if (provider.id == providerId && provider is TTSProviderSetting.RemoteTTS) {
+                        provider.copy(voice = voice)
+                    } else {
+                        provider
+                    }
+                }
             )
         }
     }
@@ -154,7 +256,56 @@ fun SettingRemoteTTSPage(vm: SettingVM = koinViewModel()) {
                         remoteTTSItems(
                             setting = target,
                             onValueChange = ::updateRemoteProvider,
+                            voiceOptions = voices,
+                            onRefreshVoices = { scope.launch { loadVoices(target) } },
+                            voicesLoading = voicesLoading,
+                            voiceLoadError = voicesError,
                         )
+                    }
+                }
+
+                // 连接状态：health 判活 + models 取模型列表，一次点按就能确认地址/密钥/模型
+                item {
+                    CardGroup(title = { Text(stringResource(R.string.setting_remote_tts_group_connection)) }) {
+                        formItem(
+                            headlineContent = { Text(stringResource(R.string.setting_remote_tts_connection_test)) },
+                            supportingContent = {
+                                val error = testError
+                                val models = testModels
+                                when {
+                                    error != null -> Text(
+                                        text = error,
+                                        color = MaterialTheme.colorScheme.error,
+                                    )
+
+                                    models != null -> Text(
+                                        stringResource(
+                                            R.string.setting_remote_tts_connection_ok,
+                                            // 多模型只列前几个，避免撑爆一行
+                                            models.take(3).joinToString(", ").ifBlank { "—" } +
+                                                if (models.size > 3) " …" else "",
+                                        )
+                                    )
+
+                                    else -> Unit
+                                }
+                            },
+                        ) {
+                            Button(
+                                onClick = { scope.launch { testConnection(target) } },
+                                enabled = !testing,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                if (testing) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        strokeWidth = 2.dp,
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                }
+                                Text(stringResource(R.string.setting_remote_tts_connection_test))
+                            }
+                        }
                     }
                 }
 
@@ -167,7 +318,19 @@ fun SettingRemoteTTSPage(vm: SettingVM = koinViewModel()) {
                         )
                     }
                 }
-                // 克隆注册（下一步）：插在这个位置 —— 采样参数之后、内置 TTS 开关之前
+
+                // 克隆注册：整段 WAV 或预提取的 .spk/.rvq，注册成功直接切过去用
+                item {
+                    CloneVoiceGroup(
+                        provider = target,
+                        api = api,
+                        currentVoice = target.voice,
+                        voices = voices,
+                        form = cloneForm,
+                        refreshVoices = { loadVoices(target) },
+                        onUseVoice = { voice -> useVoice(target.id, voice) },
+                    )
+                }
             }
 
             item {
@@ -265,3 +428,410 @@ private fun Settings.deselectedAfterBuiltInToggle(enableBuiltInTts: Boolean): Uu
     if (selected !is TTSProviderSetting.SystemTTS) return selectedTTSProviderId
     return ttsProviders.fallbackTTSProvider(allowSystemTTS = false)?.id ?: selectedTTSProviderId
 }
+
+/** 克隆音色的上传方式：整段 WAV，或预提取的 .spk + .rvq latents */
+private enum class CloneUploadMode { Wav, Latents }
+
+/** 待上传的槽位：一个系统文件选择器复用三种文件 */
+private enum class ClonePickTarget { Wav, Spk, Rvq }
+
+/** 读进内存的参考音频：文件名用于回显，bytes 直接上传 */
+private class SelectedAudio(val fileName: String, val bytes: ByteArray)
+
+private sealed interface AudioPickResult {
+    data class Success(val audio: SelectedAudio) : AudioPickResult
+    data class Failure(val message: String) : AudioPickResult
+}
+
+/**
+ * 克隆注册表单的状态。
+ *
+ * 由页面级 `remember` 持有而不是放在 LazyColumn 的 item 里：item 被回收时
+ * 已读进内存的参考音频（最大 20MB）没必要让用户重选一次。
+ */
+private class CloneVoiceForm {
+    var name by mutableStateOf("")
+    var refText by mutableStateOf("")
+    var mode by mutableStateOf(CloneUploadMode.Wav)
+    var wav by mutableStateOf<SelectedAudio?>(null)
+    var spk by mutableStateOf<SelectedAudio?>(null)
+    var rvq by mutableStateOf<SelectedAudio?>(null)
+    var pickTarget by mutableStateOf(ClonePickTarget.Wav)
+    var registering by mutableStateOf(false)
+    var deleting by mutableStateOf<String?>(null)
+    var error by mutableStateOf<String?>(null)
+    var success by mutableStateOf<String?>(null)
+    var pendingDelete by mutableStateOf<String?>(null)
+
+    /** 当前模式下要上传的文件是否齐了（注册按钮的可用条件之一） */
+    val filesReady: Boolean
+        get() = when (mode) {
+            CloneUploadMode.Wav -> wav != null
+            CloneUploadMode.Latents -> spk != null && rvq != null
+        }
+
+    fun clearPicked() {
+        wav = null
+        spk = null
+        rvq = null
+    }
+}
+
+/** 单个文件上传上限：与服务端一致（speech 模块里的同名常量是 internal，跨模块取不到） */
+private const val CLONE_MAX_UPLOAD_BYTES: Long = 20L * 1024 * 1024
+
+/** 音色列表自动刷新的防抖窗口：逐字输入 baseUrl 时不至于每一击都发一次请求 */
+private const val VOICE_REFRESH_DEBOUNCE_MS = 500L
+
+/**
+ * 「克隆音色注册」分组。
+ *
+ * 协议见服务端文档：`POST {baseUrl}/audio/voices`，要么整段 WAV，要么预提取的 spk + rvq latents。
+ * 只有 base 类型模型支持克隆，其它模型服务端返回 400 并带上 `only valid for base models`。
+ */
+@Composable
+private fun CloneVoiceGroup(
+    provider: TTSProviderSetting.RemoteTTS,
+    api: RemoteTTSApi,
+    currentVoice: String,
+    voices: List<RemoteVoiceInfo>,
+    form: CloneVoiceForm,
+    refreshVoices: suspend () -> List<RemoteVoiceInfo>,
+    onUseVoice: (String) -> Unit,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    suspend fun applyPick(target: ClonePickTarget, result: AudioPickResult) {
+        when (result) {
+            is AudioPickResult.Failure -> form.error = result.message
+            is AudioPickResult.Success -> {
+                form.error = null
+                form.success = null
+                when (target) {
+                    ClonePickTarget.Wav -> form.wav = result.audio
+                    ClonePickTarget.Spk -> form.spk = result.audio
+                    ClonePickTarget.Rvq -> form.rvq = result.audio
+                }
+            }
+        }
+    }
+
+    suspend fun register() {
+        val name = form.name.trim()
+        if (name.isEmpty()) {
+            form.error = context.getString(R.string.setting_remote_tts_clone_name)
+            return
+        }
+        form.registering = true
+        form.error = null
+        form.success = null
+        try {
+            val refText = form.refText.trim()
+            val missingFile = context.getString(R.string.setting_remote_tts_clone_missing_file)
+            when (form.mode) {
+                CloneUploadMode.Wav -> {
+                    val wav = form.wav?.bytes ?: throw IllegalStateException(missingFile)
+                    api.registerVoiceWithWav(provider, name, refText, wav)
+                }
+
+                CloneUploadMode.Latents -> {
+                    val spk = form.spk?.bytes ?: throw IllegalStateException(missingFile)
+                    val rvq = form.rvq?.bytes ?: throw IllegalStateException(missingFile)
+                    api.registerVoiceWithLatents(provider, name, refText, spk, rvq)
+                }
+            }
+            form.success = context.getString(R.string.setting_remote_tts_clone_success, name)
+            form.name = ""
+            form.refText = ""
+            form.clearPicked()
+            // 出现在服务端列表里才切过去：避免选中一个服务端其实没有的音色
+            if (refreshVoices().any { it.name == name }) {
+                onUseVoice(name)
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            form.error = cloneErrorMessage(context, e)
+        } finally {
+            form.registering = false
+        }
+    }
+
+    suspend fun delete(name: String) {
+        form.deleting = name
+        form.error = null
+        form.success = null
+        try {
+            api.deleteVoice(provider, name)
+            refreshVoices()
+            // 删掉的正好是当前音色，置空回到服务端默认，否则合成会一直报音色不存在
+            if (currentVoice == name) {
+                onUseVoice("")
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            form.error = context.getString(
+                R.string.setting_remote_tts_clone_delete_failed,
+                e.readableMessage(),
+            )
+        } finally {
+            form.deleting = null
+        }
+    }
+
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        // 回调时读 pickTarget：一次点击只改一个槽位
+        val target = form.pickTarget
+        scope.launch { applyPick(target, pickAudioFile(context, uri)) }
+    }
+
+    fun launchPicker(target: ClonePickTarget) {
+        form.pickTarget = target
+        picker.launch(
+            when (target) {
+                // WAV 有标准 mime
+                ClonePickTarget.Wav -> arrayOf("audio/wav", "audio/x-wav", "audio/*")
+                // .spk/.rvq 是自定义扩展名，mime 多半是 application/octet-stream，只能放开
+                ClonePickTarget.Spk, ClonePickTarget.Rvq -> arrayOf("*/*")
+            }
+        )
+    }
+
+    val registered = voices.filter { it.isRegistered }
+    // CardGroup 的 content lambda 不是 @Composable，需要当参数传出去的文案必须在这里先取好
+    val wavLabel = stringResource(R.string.setting_remote_tts_clone_pick_wav)
+    val spkLabel = stringResource(R.string.setting_remote_tts_clone_pick_spk)
+    val rvqLabel = stringResource(R.string.setting_remote_tts_clone_pick_rvq)
+
+    CardGroup(title = { Text(stringResource(R.string.setting_remote_tts_group_clone)) }) {
+        item(headlineContent = { Text(stringResource(R.string.setting_remote_tts_clone_hint)) })
+
+        formItem(
+            headlineContent = { Text(stringResource(R.string.setting_remote_tts_clone_name)) },
+            supportingContent = { Text(stringResource(R.string.setting_remote_tts_clone_name_hint)) },
+        ) {
+            OutlinedTextField(
+                value = form.name,
+                onValueChange = { form.name = it },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("myvoice") },
+                singleLine = true,
+            )
+        }
+
+        formItem(
+            headlineContent = { Text(stringResource(R.string.setting_remote_tts_clone_ref_text)) },
+            supportingContent = { Text(stringResource(R.string.setting_remote_tts_clone_ref_text_hint)) },
+        ) {
+            OutlinedTextField(
+                value = form.refText,
+                onValueChange = { form.refText = it },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 2,
+                maxLines = 4,
+            )
+        }
+
+        formItem(headlineContent = { Text(stringResource(R.string.setting_remote_tts_clone_mode)) }) {
+            val modes = listOf(
+                CloneUploadMode.Wav to stringResource(R.string.setting_remote_tts_clone_mode_wav),
+                CloneUploadMode.Latents to stringResource(R.string.setting_remote_tts_clone_mode_latents),
+            )
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                modes.forEachIndexed { index, (mode, label) ->
+                    SegmentedButton(
+                        selected = form.mode == mode,
+                        onClick = { form.mode = mode },
+                        shape = SegmentedButtonDefaults.itemShape(index, modes.size),
+                    ) {
+                        Text(label)
+                    }
+                }
+            }
+        }
+
+        when (form.mode) {
+            CloneUploadMode.Wav -> cloneFileRow(
+                label = wavLabel,
+                fileName = form.wav?.fileName,
+                onPick = { launchPicker(ClonePickTarget.Wav) },
+            )
+
+            CloneUploadMode.Latents -> {
+                cloneFileRow(
+                    label = spkLabel,
+                    fileName = form.spk?.fileName,
+                    onPick = { launchPicker(ClonePickTarget.Spk) },
+                )
+                cloneFileRow(
+                    label = rvqLabel,
+                    fileName = form.rvq?.fileName,
+                    onPick = { launchPicker(ClonePickTarget.Rvq) },
+                )
+            }
+        }
+
+        // 网络/读取失败都落到这里，不静默吞掉
+        val error = form.error
+        if (error != null) {
+            item(headlineContent = { Text(error, color = MaterialTheme.colorScheme.error) })
+        }
+        val success = form.success
+        if (success != null) {
+            item(headlineContent = { Text(success, color = MaterialTheme.colorScheme.primary) })
+        }
+
+        formItem {
+            Button(
+                onClick = { scope.launch { register() } },
+                enabled = !form.registering && form.name.isNotBlank() && form.filesReady,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                if (form.registering) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                }
+                Text(
+                    if (form.registering) {
+                        stringResource(R.string.setting_remote_tts_clone_registering)
+                    } else {
+                        stringResource(R.string.setting_remote_tts_clone_register)
+                    }
+                )
+            }
+        }
+
+        item(headlineContent = { Text(stringResource(R.string.setting_remote_tts_clone_registered_title)) })
+        if (registered.isEmpty()) {
+            item(headlineContent = { Text(stringResource(R.string.setting_remote_tts_clone_empty)) })
+        } else {
+            registered.forEach { voice ->
+                item(
+                    headlineContent = { Text(voice.name) },
+                    trailingContent = {
+                        IconButton(
+                            onClick = { form.pendingDelete = voice.name },
+                            enabled = form.deleting == null && !form.registering,
+                        ) {
+                            if (form.deleting == voice.name) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    strokeWidth = 2.dp,
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = HugeIcons.Delete01,
+                                    contentDescription = stringResource(R.string.setting_remote_tts_clone_delete),
+                                )
+                            }
+                        }
+                    },
+                )
+            }
+        }
+    }
+
+    // 删除前二次确认：服务端不保留回收站，误删要重新上传参考音频
+    val pendingDelete = form.pendingDelete
+    if (pendingDelete != null) {
+        AlertDialog(
+            onDismissRequest = { form.pendingDelete = null },
+            title = { Text(stringResource(R.string.setting_remote_tts_clone_delete)) },
+            text = { Text(stringResource(R.string.setting_remote_tts_clone_delete_confirm, pendingDelete)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        form.pendingDelete = null
+                        scope.launch { delete(pendingDelete) }
+                    }
+                ) {
+                    Text(stringResource(R.string.delete))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { form.pendingDelete = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
+    }
+}
+
+/** 文件选择行：点整行调起系统文件选择器，已选文件名显示在副标题 */
+private fun CardGroupScope.cloneFileRow(
+    label: String,
+    fileName: String?,
+    onPick: () -> Unit,
+) {
+    item(
+        onClick = onPick,
+        headlineContent = { Text(label) },
+        supportingContent = if (fileName != null) {
+            { Text(fileName) }
+        } else {
+            null
+        },
+    )
+}
+
+/**
+ * 读取参考音频。
+ *
+ * 先看 provider 报告的大小、再兜底看实际读到的字节数：任一超过 20MB 都直接拒绝，
+ * 不发起请求（base64 后体积再涨 4/3，会撞上服务端 32MB 的请求体上限）。
+ */
+private suspend fun pickAudioFile(context: Context, uri: Uri): AudioPickResult =
+    withContext(Dispatchers.IO) {
+        try {
+            val declaredSize = runCatching {
+                context.contentResolver.openFileDescriptor(uri, "r")?.use { it.statSize }
+            }.getOrNull() ?: -1L
+            if (declaredSize > CLONE_MAX_UPLOAD_BYTES) {
+                return@withContext AudioPickResult.Failure(
+                    context.getString(R.string.setting_remote_tts_clone_file_too_large)
+                )
+            }
+            val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                ?: return@withContext AudioPickResult.Failure(
+                    context.getString(R.string.setting_remote_tts_clone_missing_file)
+                )
+            // 有些 provider 不返回 statSize，读完再兜一次底
+            if (bytes.size.toLong() > CLONE_MAX_UPLOAD_BYTES) {
+                return@withContext AudioPickResult.Failure(
+                    context.getString(R.string.setting_remote_tts_clone_file_too_large)
+                )
+            }
+            AudioPickResult.Success(
+                SelectedAudio(
+                    fileName = FileUtils.getFileNameFromUri(context, uri)
+                        ?: uri.lastPathSegment?.substringAfterLast('/')
+                        ?: uri.toString(),
+                    bytes = bytes,
+                )
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            AudioPickResult.Failure(e.readableMessage())
+        }
+    }
+
+/** 非 base 模型克隆时服务端返回 400 + `only valid for base models`，补一句本地化的行动建议 */
+private fun cloneErrorMessage(context: Context, e: Exception): String {
+    val message = e.readableMessage()
+    return if (message.contains("only valid for base models", ignoreCase = true)) {
+        message + "\n" + context.getString(R.string.setting_remote_tts_clone_base_model_only)
+    } else {
+        message
+    }
+}
+
+/** 异常文案：message 缺失时用类名兜底，保证界面上总有内容可显示 */
+private fun Exception.readableMessage(): String =
+    message?.takeIf { it.isNotBlank() } ?: (this::class.simpleName ?: "Unknown error")
