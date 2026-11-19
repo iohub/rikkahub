@@ -255,7 +255,7 @@ internal fun checkRemoteUploadSize(bytes: ByteArray, label: String) {
     if (bytes.size.toLong() > REMOTE_TTS_MAX_UPLOAD_BYTES) {
         throw RemoteTTSApiException(
             message = "$label too large: ${bytes.size} bytes, limit is " +
-                    "${REMOTE_TTS_MAX_UPLOAD_BYTES / 1024 / 1024}MB",
+                "${REMOTE_TTS_MAX_UPLOAD_BYTES / 1024 / 1024}MB",
             statusCode = 413,
         )
     }
