@@ -1018,6 +1018,15 @@
   <string name="setting_page_theme_setting_desc">تخصيص نظام ألوان التطبيق</string>
   <string name="setting_page_tts_service">خدمات الكلام</string>
   <string name="setting_page_tts_service_desc">تكوين مزوّدي تحويل النص إلى كلام والتعرّف على الكلام</string>
+  <string name="setting_page_remote_tts">خدمة TTS عن بُعد</string>
+  <string name="setting_page_remote_tts_desc">إعداد خدمة تحويل نص إلى كلام متوافقة مع OpenAI تستضيفها بنفسك</string>
+  <string name="setting_remote_tts_page_title">خدمة TTS عن بُعد</string>
+  <string name="setting_remote_tts_enable_builtin_tts">تفعيل TTS المدمج</string>
+  <string name="setting_remote_tts_enable_builtin_tts_desc">عند الإيقاف لن يظهر TTS المدمج في النظام ضمن قائمة خدمات الصوت ولن يُستخدم. معطّل افتراضيًا.</string>
+  <string name="setting_remote_tts_test_text">مرحبًا، هذا اختبار لخدمة TTS عن بُعد.</string>
+  <string name="setting_remote_tts_test_play">استماع</string>
+  <string name="setting_remote_tts_add">إضافة خدمة TTS عن بُعد</string>
+  <string name="setting_remote_tts_missing">لا توجد خدمة TTS عن بُعد بعد</string>
   <string name="setting_page_tts_settings">إعدادات TTS</string>
   <string name="setting_page_web_server">خادم الويب</string>
   <string name="setting_page_web_server_address_note">ملاحظات العنوان</string>

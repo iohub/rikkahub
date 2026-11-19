@@ -983,6 +983,15 @@
   <string name="setting_theme_page_dynamic_color_hint">Dynamische Farbe ist aktiviert. Deaktiviere sie unter Einstellungen &gt; Theme, um benutzerdefinierte Themes zu verwenden.</string>
   <string name="setting_page_tts_service">Sprachdienste</string>
   <string name="setting_page_tts_service_desc">Konfiguriere Anbieter für Sprachausgabe und Spracherkennung</string>
+  <string name="setting_page_remote_tts">Remote-TTS-Dienst</string>
+  <string name="setting_page_remote_tts_desc">Einen selbst betriebenen, OpenAI-kompatiblen Sprachsynthesedienst konfigurieren</string>
+  <string name="setting_remote_tts_page_title">Remote-TTS-Dienst</string>
+  <string name="setting_remote_tts_enable_builtin_tts">Integriertes TTS aktivieren</string>
+  <string name="setting_remote_tts_enable_builtin_tts_desc">Wenn deaktiviert, erscheint das integrierte System-TTS nicht in der Liste der Sprachdienste und wird nicht verwendet. Standardmäßig deaktiviert.</string>
+  <string name="setting_remote_tts_test_text">Hallo, dies ist ein Test für Remote-TTS.</string>
+  <string name="setting_remote_tts_test_play">Anhören</string>
+  <string name="setting_remote_tts_add">Remote-TTS-Dienst hinzufügen</string>
+  <string name="setting_remote_tts_missing">Noch kein Remote-TTS-Dienst vorhanden</string>
   <string name="setting_provider_page_save">Speichern</string>
   <string name="setting_provider_page_save_success">Erfolgreich gespeichert</string>
   <string name="setting_provider_page_scan_qr_code">QR-Code scannen</string>

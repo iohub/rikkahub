@@ -846,6 +846,15 @@
   <string name="setting_theme_page_dynamic_color_hint">ダイナミックカラーが有効です。カスタムテーマを使用するには、設定 &gt; テーマで無効にしてください。</string>
   <string name="setting_page_tts_service">音声サービス</string>
   <string name="setting_page_tts_service_desc">音声合成と音声認識のプロバイダーを設定</string>
+  <string name="setting_page_remote_tts">リモート TTS サービス</string>
+  <string name="setting_page_remote_tts_desc">自前で用意した OpenAI 互換の音声合成サービスを設定します</string>
+  <string name="setting_remote_tts_page_title">リモート TTS サービス</string>
+  <string name="setting_remote_tts_enable_builtin_tts">組み込み TTS を有効にする</string>
+  <string name="setting_remote_tts_enable_builtin_tts_desc">オフにすると、システムの組み込み TTS は音声サービスの一覧に表示されず、使用されません。既定ではオフです。</string>
+  <string name="setting_remote_tts_test_text">こんにちは、これはリモート TTS のテストです。</string>
+  <string name="setting_remote_tts_test_play">試聴</string>
+  <string name="setting_remote_tts_add">リモート TTS サービスを追加</string>
+  <string name="setting_remote_tts_missing">リモート TTS サービスがまだありません</string>
   <string name="setting_page_tts_settings">TTS設定</string>
   <string name="setting_page_web_server">Webサーバー</string>
   <string name="setting_page_web_server_address_note">アドレスメモ</string>

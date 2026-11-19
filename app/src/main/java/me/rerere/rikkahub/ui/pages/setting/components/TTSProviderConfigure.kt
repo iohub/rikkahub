@@ -25,17 +25,33 @@ import me.rerere.hugeicons.stroke.ViewOff
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.ui.components.ui.CardGroup
 import me.rerere.rikkahub.ui.components.ui.CardGroupScope
+import me.rerere.rikkahub.ui.components.ui.switchItem
 import me.rerere.tts.provider.TTSProviderSetting
 import me.rerere.ui.components.OutlinedNumberInput
 import me.rerere.ui.components.SelectTextField
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
+/**
+ * TTS 提供商配置表单。
+ *
+ * @param allowSystemTts 为 false 时类型下拉里不提供系统 TTS —— 内置 TTS 关闭时列表会把系统 TTS 过滤掉，
+ *   允许用户切过去只会让条目「消失」，看起来像没保存上
+ */
 @Composable
 fun TTSProviderConfigure(
     setting: TTSProviderSetting,
     modifier: Modifier = Modifier,
+    allowSystemTts: Boolean = true,
     onValueChange: (TTSProviderSetting) -> Unit
 ) {
+    // 内置 TTS 关闭时不提供系统 TTS 选项
+    val providerTypes = remember(allowSystemTts) {
+        if (allowSystemTts) {
+            TTSProviderSetting.Types
+        } else {
+            TTSProviderSetting.Types.filterNot { it == TTSProviderSetting.SystemTTS::class }
+        }
+    }
     Column(
         verticalArrangement = Arrangement.spacedBy(16.dp),
         modifier = modifier.verticalScroll(rememberScrollState())
@@ -62,7 +78,7 @@ fun TTSProviderConfigure(
                         is TTSProviderSetting.DeepSeek -> "DeepSeek"
                         is TTSProviderSetting.RemoteTTS -> stringResource(R.string.setting_tts_page_provider_remote)
                     },
-                    options = TTSProviderSetting.Types,
+                    options = providerTypes,
                     readOnly = true,
                     modifier = Modifier.fillMaxWidth(),
                     optionToString = { providerClass ->
@@ -1387,15 +1403,28 @@ private fun CardGroupScope.deepSeekTTSItems(
     }
 }
 
-// 自建的 OpenAI 兼容 TTS 服务：除 model/voice/language 外都可留空，留空的字段不下发
-private fun CardGroupScope.remoteTTSItems(
+/**
+ * 自建的 OpenAI 兼容 TTS 服务：除 model/voice/language 外都可留空，留空的字段不下发。
+ *
+ * internal 而非 private：「远程 TTS 服务」设置页要复用同一套表单，避免两处实现漂移。
+ */
+internal fun CardGroupScope.remoteTTSItems(
     setting: TTSProviderSetting.RemoteTTS,
     onValueChange: (TTSProviderSetting) -> Unit
 ) {
-    // Base URL
+    // Base URL：非空但不是合法 URL 时标红
+    val baseUrlInvalid = setting.baseUrl.isNotBlank() && setting.baseUrl.toHttpUrlOrNull() == null
     formItem(
         headlineContent = { Text(stringResource(R.string.setting_tts_page_base_url)) },
-        supportingContent = { Text("请求发往 {Base URL}/audio/speech，需要包含 /v1 这类版本前缀") }
+        supportingContent = {
+            Text(
+                if (baseUrlInvalid) {
+                    "服务地址格式不正确，需要以 http:// 或 https:// 开头"
+                } else {
+                    "请求发往 {Base URL}/audio/speech，需要包含 /v1 这类版本前缀"
+                }
+            )
+        }
     ) {
         OutlinedTextField(
             value = setting.baseUrl,
@@ -1403,6 +1432,7 @@ private fun CardGroupScope.remoteTTSItems(
             modifier = Modifier.fillMaxWidth(),
             placeholder = { Text("http://127.0.0.1:8080/v1") },
             singleLine = true,
+            isError = baseUrlInvalid,
         )
     }
 
@@ -1505,16 +1535,28 @@ private fun CardGroupScope.remoteTTSItems(
         )
     }
 
-    // Seed：负数表示不下发
-    formItem(
-        headlineContent = { Text("Seed") },
-        supportingContent = { Text("固定采样种子便于复现，负数表示不下发") }
-    ) {
-        OutlinedNumberInput(
-            value = setting.seed,
-            onValueChange = { onValueChange(setting.copy(seed = it)) },
-            modifier = Modifier.fillMaxWidth(),
-            label = "-1",
-        )
+    // Seed：负数表示不下发。数字键盘打不出负号，所以用开关表达「-1 = 随机」，
+    // 关掉开关才显示固定种子的输入框（0 及以上），这样 -1 随时能设回去
+    val randomSeed = setting.seed < 0
+    switchItem(
+        checked = randomSeed,
+        onCheckedChange = { random ->
+            onValueChange(setting.copy(seed = if (random) -1 else 0))
+        },
+        supportingContent = { Text("开启时不下发 seed，由服务端随机采样") },
+        headlineContent = { Text("随机种子") },
+    )
+    if (!randomSeed) {
+        formItem(
+            headlineContent = { Text("Seed") },
+            supportingContent = { Text("固定采样种子便于复现，取 0 及以上的整数") }
+        ) {
+            OutlinedNumberInput(
+                value = setting.seed,
+                onValueChange = { onValueChange(setting.copy(seed = it.coerceAtLeast(0))) },
+                modifier = Modifier.fillMaxWidth(),
+                label = "0",
+            )
+        }
     }
 }

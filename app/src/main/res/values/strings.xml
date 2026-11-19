@@ -1003,6 +1003,15 @@
   <string name="setting_theme_page_dynamic_color_hint">Dynamic color is enabled. Disable it in Preferences &gt; Theme to use custom themes.</string>
   <string name="setting_page_tts_service">Speech Services</string>
   <string name="setting_page_tts_service_desc">Configure text-to-speech and speech recognition providers</string>
+  <string name="setting_page_remote_tts">Remote TTS Service</string>
+  <string name="setting_page_remote_tts_desc">Configure a self-hosted OpenAI-compatible text-to-speech service</string>
+  <string name="setting_remote_tts_page_title">Remote TTS Service</string>
+  <string name="setting_remote_tts_enable_builtin_tts">Enable built-in TTS</string>
+  <string name="setting_remote_tts_enable_builtin_tts_desc">When off, the system built-in TTS never appears in the speech service list and is never used. Off by default.</string>
+  <string name="setting_remote_tts_test_text">Hello, this is a remote TTS test.</string>
+  <string name="setting_remote_tts_test_play">Preview</string>
+  <string name="setting_remote_tts_add">Add remote TTS service</string>
+  <string name="setting_remote_tts_missing">No remote TTS service yet</string>
   <string name="setting_page_tts_settings">TTS Settings</string>
   <string name="setting_page_web_server">Web Server</string>
   <string name="setting_page_web_server_address_note">Address Notes</string>

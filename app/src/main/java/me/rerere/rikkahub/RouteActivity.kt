@@ -131,6 +131,7 @@ import me.rerere.rikkahub.ui.pages.setting.SettingSearchDetailPage
 import me.rerere.rikkahub.ui.pages.setting.SettingSearchPage
 import me.rerere.rikkahub.ui.pages.setting.SettingMediaPage
 import me.rerere.rikkahub.ui.pages.setting.SettingMediaProviderDetailPage
+import me.rerere.rikkahub.ui.pages.setting.SettingRemoteTTSPage
 import me.rerere.rikkahub.ui.pages.setting.SettingSpeechPage
 import me.rerere.rikkahub.ui.pages.setting.SettingSshTunnelDetailPage
 import me.rerere.rikkahub.ui.pages.setting.SettingSshTunnelPage
@@ -512,6 +513,10 @@ class RouteActivity : ComponentActivity() {
                                 SettingSpeechPage()
                             }
 
+                            entry<Screen.SettingRemoteTTS> {
+                                SettingRemoteTTSPage()
+                            }
+
                             entry<Screen.SettingMedia> {
                                 SettingMediaPage()
                             }
@@ -776,6 +781,9 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data object SettingSpeech : Screen
+
+    @Serializable
+    data object SettingRemoteTTS : Screen
 
     @Serializable
     data object SettingMedia : Screen

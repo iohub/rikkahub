@@ -117,6 +117,7 @@ fun SettingSpeechPage(vm: SettingVM = koinViewModel()) {
                                 if (settings.enableBuiltInTts) TTSProviderSetting.SystemTTS()
                                 else TTSProviderSetting.RemoteTTS()
                             },
+                            allowSystemTts = settings.enableBuiltInTts,
                         ) { newProvider ->
                             vm.updateSettings { latest ->
                                 latest.copy(
@@ -190,7 +191,13 @@ fun SettingSpeechPage(vm: SettingVM = koinViewModel()) {
             },
             onDismiss = { editingTTSProvider = null },
         ) { value, onValueChange, modifier ->
-            TTSProviderConfigure(setting = value, onValueChange = onValueChange, modifier = modifier)
+            TTSProviderConfigure(
+                setting = value,
+                // 内置 TTS 关闭时不给「系统 TTS」这个类型选项，否则切过去条目就从列表里消失了
+                allowSystemTts = settings.enableBuiltInTts,
+                onValueChange = onValueChange,
+                modifier = modifier,
+            )
         }
     }
 
@@ -419,6 +426,7 @@ private fun ASRProviderList(
 @Composable
 private fun AddTTSProviderButton(
     defaultProvider: () -> TTSProviderSetting,
+    allowSystemTts: Boolean,
     onAdd: (TTSProviderSetting) -> Unit,
 ) {
     var newProvider by remember { mutableStateOf<TTSProviderSetting?>(null) }
@@ -437,7 +445,13 @@ private fun AddTTSProviderButton(
             onConfirm = onAdd,
             onDismiss = { newProvider = null },
         ) { value, onValueChange, modifier ->
-            TTSProviderConfigure(setting = value, onValueChange = onValueChange, modifier = modifier)
+            TTSProviderConfigure(
+                setting = value,
+                // 新建时同样不提供系统 TTS 类型选项
+                allowSystemTts = allowSystemTts,
+                onValueChange = onValueChange,
+                modifier = modifier,
+            )
         }
     }
 }

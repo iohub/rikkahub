@@ -846,6 +846,15 @@
   <string name="setting_theme_page_dynamic_color_hint">動態顏色已開啟，請在偏好設定 &gt; 主題中關閉以使用自訂主題。</string>
   <string name="setting_page_tts_service">語音服務</string>
   <string name="setting_page_tts_service_desc">配置語音合成與語音識別服務提供商</string>
+  <string name="setting_page_remote_tts">遠端 TTS 服務</string>
+  <string name="setting_page_remote_tts_desc">設定自架的 OpenAI 相容語音合成服務</string>
+  <string name="setting_remote_tts_page_title">遠端 TTS 服務</string>
+  <string name="setting_remote_tts_enable_builtin_tts">啟用內建 TTS</string>
+  <string name="setting_remote_tts_enable_builtin_tts_desc">關閉時系統內建 TTS 不會出現在語音服務清單，也不會被使用；預設關閉</string>
+  <string name="setting_remote_tts_test_text">你好，這是一段遠端 TTS 試聽文字。</string>
+  <string name="setting_remote_tts_test_play">試聽</string>
+  <string name="setting_remote_tts_add">新增遠端 TTS 服務</string>
+  <string name="setting_remote_tts_missing">還沒有遠端 TTS 服務</string>
   <string name="setting_page_tts_settings">TTS設定</string>
   <string name="setting_page_web_server">Web伺服器</string>
   <string name="setting_page_web_server_address_note">位址備註</string>

@@ -52,6 +52,7 @@ import me.rerere.hugeicons.stroke.Book03
 import me.rerere.hugeicons.stroke.Bookshelf01
 import me.rerere.hugeicons.stroke.Brain02
 import me.rerere.hugeicons.stroke.Clapping01
+import me.rerere.hugeicons.stroke.CloudServer
 import me.rerere.hugeicons.stroke.Database02
 import me.rerere.hugeicons.stroke.GlobalSearch
 import me.rerere.hugeicons.stroke.Image02
@@ -262,6 +263,12 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                         leadingContent = { CardGroupIcon(HugeIcons.Megaphone01, containerColor = containerColor, contentColor = contentColor) },
                         supportingContent = { Text(stringResource(R.string.setting_page_tts_service_desc)) },
                         headlineContent = { Text(stringResource(R.string.setting_page_tts_service)) },
+                    )
+                    item(
+                        onClick = { navController.navigate(Screen.SettingRemoteTTS) },
+                        leadingContent = { CardGroupIcon(HugeIcons.CloudServer, containerColor = containerColor, contentColor = contentColor) },
+                        supportingContent = { Text(stringResource(R.string.setting_page_remote_tts_desc)) },
+                        headlineContent = { Text(stringResource(R.string.setting_page_remote_tts)) },
                     )
                     item(
                         onClick = { navController.navigate(Screen.SettingMedia) },

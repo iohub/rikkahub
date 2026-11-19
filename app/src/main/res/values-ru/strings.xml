@@ -846,6 +846,15 @@
   <string name="setting_theme_page_dynamic_color_hint">Динамические цвета включены. Отключите их в разделе Настройки &gt; Тема, чтобы использовать пользовательские темы.</string>
   <string name="setting_page_tts_service">Служба преобразования текста в речь</string>
   <string name="setting_page_tts_service_desc">Настроить поставщиков службы преобразования текста в речь</string>
+  <string name="setting_page_remote_tts">Удалённый сервис TTS</string>
+  <string name="setting_page_remote_tts_desc">Настройка собственного TTS-сервиса, совместимого с OpenAI</string>
+  <string name="setting_remote_tts_page_title">Удалённый сервис TTS</string>
+  <string name="setting_remote_tts_enable_builtin_tts">Включить встроенный TTS</string>
+  <string name="setting_remote_tts_enable_builtin_tts_desc">Если выключено, встроенный системный TTS не отображается в списке речевых сервисов и не используется. По умолчанию выключено.</string>
+  <string name="setting_remote_tts_test_text">Здравствуйте, это проверка удалённого TTS.</string>
+  <string name="setting_remote_tts_test_play">Прослушать</string>
+  <string name="setting_remote_tts_add">Добавить сервис удалённого TTS</string>
+  <string name="setting_remote_tts_missing">Удалённый сервис TTS ещё не добавлен</string>
   <string name="setting_page_tts_settings">Настройки TTS</string>
   <string name="setting_page_web_server">Веб-сервер</string>
   <string name="setting_page_web_server_address_note">Примечания к адресу</string>
