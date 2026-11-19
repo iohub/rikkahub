@@ -13,6 +13,7 @@ import me.rerere.tts.provider.providers.MiMoTTSProvider
 import me.rerere.tts.provider.providers.MiniMaxTTSProvider
 import me.rerere.tts.provider.providers.OpenAITTSProvider
 import me.rerere.tts.provider.providers.QwenTTSProvider
+import me.rerere.tts.provider.providers.RemoteTTSProvider
 import me.rerere.tts.provider.providers.StepTTSProvider
 import me.rerere.tts.provider.providers.SystemTTSProvider
 import me.rerere.tts.provider.providers.VolcengineTTSProvider
@@ -32,6 +33,7 @@ class TTSManager(private val context: Context) {
     private val fishAudioProvider = FishAudioTTSProvider()
     private val volcengineProvider = VolcengineTTSProvider()
     private val deepSeekProvider = DeepSeekTTSProvider()
+    private val remoteTTSProvider = RemoteTTSProvider()
 
     fun generateSpeech(
         providerSetting: TTSProviderSetting,
@@ -51,6 +53,7 @@ class TTSManager(private val context: Context) {
             is TTSProviderSetting.Step -> stepProvider.generateSpeech(context, providerSetting, request)
             is TTSProviderSetting.Volcengine -> volcengineProvider.generateSpeech(context, providerSetting, request)
             is TTSProviderSetting.DeepSeek -> deepSeekProvider.generateSpeech(context, providerSetting, request)
+            is TTSProviderSetting.RemoteTTS -> remoteTTSProvider.generateSpeech(context, providerSetting, request)
         }
     }
 
@@ -73,6 +76,7 @@ class TTSManager(private val context: Context) {
             is TTSProviderSetting.Step -> stepProvider.promptGuidance
             is TTSProviderSetting.Volcengine -> volcengineProvider.promptGuidance
             is TTSProviderSetting.DeepSeek -> deepSeekProvider.promptGuidance
+            is TTSProviderSetting.RemoteTTS -> remoteTTSProvider.promptGuidance
         }
     }
 }

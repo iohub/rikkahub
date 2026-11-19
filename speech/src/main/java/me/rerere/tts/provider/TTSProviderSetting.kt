@@ -318,6 +318,48 @@ sealed class TTSProviderSetting {
             copy(id = id, name = name)
     }
 
+    /**
+     * 自建 OpenAI 兼容 TTS 服务 (qwen-talker 的 tts-server)。
+     *
+     * 走 [POST {baseUrl}/audio/speech], baseUrl 约定已包含 `/v1` (与 OpenAI 一致),
+     * apiKey 为空时不下发 Authorization 头。除 OpenAI 标准字段 (input/voice/response_format/model)
+     * 外, 额外支持 language (覆盖服务端默认语言)、temperature 与 seed。
+     *
+     * responseFormat = "wav" 时服务端一次性返回完整 wav 文件; "pcm" 时返回 s16le 裸流 (无头部),
+     * 由 AudioPlayer 按 [sampleRate] 补 WAV 头后再播放。
+     */
+    @Serializable
+    @SerialName("remote")
+    data class RemoteTTS(
+        override var id: Uuid = Uuid.random(),
+        override var name: String = "Remote TTS",
+        val baseUrl: String = "http://127.0.0.1:8080/v1",
+        val apiKey: String = "",
+        // 服务端 alias, 留空时不下发, 由服务端选择默认模型
+        val model: String = "qwen3-tts-base",
+        // 克隆音色名, 留空时不下发, 使用服务端默认音色
+        val voice: String = "",
+        // 覆盖服务端默认语言, 如 "English" / "Chinese", 留空时不下发
+        val language: String = "",
+        // wav: 一次性返回完整文件 | pcm: 流式返回 s16le 裸流
+        val responseFormat: String = "wav",
+        // 仅 pcm 裸流需要, AudioPlayer 用它补 WAV 头
+        val sampleRate: Int = 24000,
+        val temperature: Float = 0.8f,
+        // -1 表示不下发, >= 0 时传给服务端做可复现的采样
+        val seed: Int = -1,
+    ) : TTSProviderSetting() {
+        override fun copyProvider(
+            id: Uuid,
+            name: String,
+        ): TTSProviderSetting {
+            return this.copy(
+                id = id,
+                name = name,
+            )
+        }
+    }
+
     companion object {
         val Types by lazy {
             listOf(
@@ -334,6 +376,7 @@ sealed class TTSProviderSetting {
                 FishAudio::class,
                 Volcengine::class,
                 DeepSeek::class,
+                RemoteTTS::class,
             )
         }
     }
