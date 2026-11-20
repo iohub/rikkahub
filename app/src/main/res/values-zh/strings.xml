@@ -1391,6 +1391,11 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="tool_ui_tts_instruct_label">语气</string>
   <string name="tool_ui_tts_instruct_empty">未指定（仅使用设置里的默认语气）</string>
   <string name="tool_ui_tts_close">关闭</string>
+  <!-- 工具调用详情页的「原始日志」逃生口，默认收起，不点开与旧界面一致 -->
+  <string name="tool_raw_log_toggle">查看原始日志</string>
+  <string name="tool_raw_log_title">原始日志</string>
+  <string name="tool_raw_log_copy">复制原始日志</string>
+  <string name="tool_raw_log_copied">已复制</string>
   <string name="tool_ui_file">文件</string>
   <string name="workspace_page_name_duplicate">名称已存在</string>
   <string name="setting_mcp_page_name_invalid">名称只能包含英文字母和数字</string>

@@ -1423,6 +1423,11 @@
   <string name="tool_ui_tts_instruct_label">Tone</string>
   <string name="tool_ui_tts_instruct_empty">Not specified (uses the default tone from settings)</string>
   <string name="tool_ui_tts_close">Close</string>
+  <!-- 工具调用详情页的「原始日志」逃生口，默认收起，不点开与旧界面一致 -->
+  <string name="tool_raw_log_toggle">View raw log</string>
+  <string name="tool_raw_log_title">Raw log</string>
+  <string name="tool_raw_log_copy">Copy raw log</string>
+  <string name="tool_raw_log_copied">Copied</string>
   <string name="tool_ui_file">file</string>
   <string name="workspace_page_name_duplicate">Name already exists</string>
   <string name="setting_mcp_page_name_invalid">Name can only contain English letters and numbers</string>
