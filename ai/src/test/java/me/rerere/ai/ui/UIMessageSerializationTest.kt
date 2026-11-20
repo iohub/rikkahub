@@ -59,4 +59,29 @@ class UIMessageSerializationTest {
 
         assertNull(Json.decodeFromString<UIMessage>(legacy).snapshotModel())
     }
+
+    @Test
+    fun `fixed audio metadata survives serialization`() {
+        val info = FixedAudioInfo(
+            chunkCount = 3,
+            providerName = "Remote TTS",
+            voice = "my-voice",
+            model = "qwen3-tts-base",
+            language = "Chinese",
+            sizeBytes = 4096L,
+            createdAt = 1_700_000_000_000L,
+        )
+        val message = UIMessage.assistant("hi").copy(fixedAudio = info)
+
+        val decoded = Json.decodeFromString<UIMessage>(Json.encodeToString(message))
+
+        assertEquals(info, decoded.fixedAudio)
+    }
+
+    @Test
+    fun `messages stored before fixed audio existed decode without one`() {
+        val legacy = """{"role":"assistant","parts":[]}"""
+
+        assertNull(Json.decodeFromString<UIMessage>(legacy).fixedAudio)
+    }
 }

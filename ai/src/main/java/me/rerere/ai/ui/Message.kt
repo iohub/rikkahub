@@ -34,6 +34,8 @@ data class UIMessage(
     // 这条消息累计请求了多少次模型（多轮工具调用共用同一条消息）
     val stepCount: Int? = null,
     val translation: String? = null,
+    // 消息级语音固化：用户把这条消息的朗读音频存到本地后留下的元数据，null = 未固化
+    val fixedAudio: FixedAudioInfo? = null,
     // 压缩检查点：此消息是它之前全部历史的摘要，组装请求时从最后一个检查点开始取
     val isContextCheckpoint: Boolean = false,
     // 请求期间生成的内部消息；该标记仅在内存中使用
@@ -134,6 +136,30 @@ data class UIMessage(
 data class ModelSnapshot(
     val modelId: String,
     val displayName: String,
+)
+
+/**
+ * 一条消息已固化（永久保存）的朗读音频的元数据。
+ *
+ * 音频本体不在消息里，而是按 messageId 分区存在 app 的 filesDir 下（见 speech 模块的 `TtsFixedAudioStore`），
+ * 这里只记录「怎么播、用什么合成的、多大」这些展示与校验需要的信息：
+ * - [chunkCount] 播放时据此知道要读几片（实际数量仍以磁盘为准，缺片时会自适应）；
+ * - [providerName]/[voice]/[model]/[language] 是**合成当时的配置快照**——之后换 provider 或换音色，
+ *   也不会让已经固化的音频看起来像「用当前音色合成的」；
+ * - [sizeBytes]/[createdAt] 供 UI 展示与存储管理使用。
+ *
+ * 所有字段都带默认值：这个消息以 JSON 整体存在 `message_node.messages` 里，
+ * 旧消息没有这个字段也能反序列化，因此**不需要数据库迁移**。
+ */
+@Serializable
+data class FixedAudioInfo(
+    val chunkCount: Int = 0,
+    val providerName: String = "",
+    val voice: String = "",
+    val model: String = "",
+    val language: String = "",
+    val sizeBytes: Long = 0,
+    val createdAt: Long = 0,
 )
 
 /**

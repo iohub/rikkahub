@@ -14,9 +14,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlin.uuid.Uuid
+import me.rerere.ai.ui.FixedAudioInfo
+import me.rerere.tts.cache.TtsFixedAudioStore
 import me.rerere.tts.model.PlaybackState
+import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.getSelectedTTSProvider
+import me.rerere.rikkahub.utils.extractQuotedContentAsText
+import me.rerere.rikkahub.utils.removeBracketedContent
 import me.rerere.rikkahub.utils.stripMarkdown
 import me.rerere.tts.model.TTSResponse
 import me.rerere.tts.provider.TTSManager
@@ -101,6 +108,33 @@ interface CustomTtsState {
      */
     fun prefetch(text: String)
 
+    /**
+     * 固化一条消息的语音：用与播放**完全相同**的文本处理与分片链路合成全部分片，再写入本地固化目录
+     * （`filesDir/tts_fixed/<messageId>/`），返回可以落到消息上的元数据。
+     *
+     * 失败（无可朗读文本 / 未选 provider / 合成失败 / 写盘失败）返回 null，可读原因写在 [error]；
+     * 任何一种失败都不会留下半套固化音频。
+     *
+     * @param text 消息原文。Markdown 清洗与「只读引号内 / 只读括号外」两项设置由本方法自己按
+     *   [speak] 调用点同样的顺序处理，调用方直接传 `message.toText()` 即可
+     * @param forceRegenerate true = 重新生成：合成时跳过音频缓存、强制请求服务端
+     */
+    suspend fun fixateMessageAudio(
+        messageId: Uuid,
+        text: String,
+        forceRegenerate: Boolean = false,
+    ): FixedAudioInfo?
+
+    /**
+     * 播放某条消息**已固化**的音频：全程读本地文件，不请求服务端。
+     *
+     * @param chunkCount 期望分片数，一般取自消息上的 [FixedAudioInfo.chunkCount]；<=0 时按磁盘实际分片数播放
+     */
+    fun speakFixedAudio(messageId: Uuid, chunkCount: Int)
+
+    /** 删除某条消息的固化音频文件，返回是否真的删掉了目录 */
+    suspend fun deleteFixedMessageAudio(messageId: Uuid): Boolean
+
     /** Stops the current speech and clears the queue. */
     fun stop()
 
@@ -159,6 +193,76 @@ private class CustomTtsStateImpl(
         controller.prefetch(processed)
     }
 
+    override suspend fun fixateMessageAudio(
+        messageId: Uuid,
+        text: String,
+        forceRegenerate: Boolean,
+    ): FixedAudioInfo? = withContext(Dispatchers.IO) {
+        val key = messageId.toString()
+        // 用 awaitLoaded 而不是 settingsFlow.value：加载完成前 value 是 dummy，
+        // 它的 displaySetting 会让文本过滤（引号/括号）与真实设置不一致，分片就对不上播放路径了
+        val settings = settingsStore.awaitLoaded()
+        val textToSpeak = processTextForTts(text, settings)
+        if (textToSpeak.isBlank()) {
+            // 与 speak() 的空文本语义一致：不合成。但要给 UI 一个可读原因，否则点了没反应
+            controller.reportError("该消息没有可朗读的文本")
+            return@withContext null
+        }
+
+        // 与手动播放共用同一个 controller + chunker：分片边界一致，固化下来的音频和点播放听到的一模一样。
+        // forceRegenerate 时 bypassCache=true，跳过 TtsAudioCache 强制请求服务端（成功后回写缓存）。
+        val responses = controller.synthesizeAll(textToSpeak, bypassCache = forceRegenerate)
+        if (responses.isEmpty()) {
+            // 合成阶段失败（未选 provider / 任一分片重试耗尽）的原因已由 controller 写进 error
+            return@withContext null
+        }
+
+        // 覆盖写之前先清掉旧目录：分片数变少时，旧的高位分片会残留下来，
+        // 而 chunkCount 是按 0..N 连续计数，残留会让它多算，播到不存在的分片。
+        // 放在合成成功之后（而不是之前）是为了：重新生成失败时不会把用户原来的固化音频弄丢。
+        TtsFixedAudioStore.deleteMessage(key)
+        var index = 0
+        for (response in responses) {
+            if (!TtsFixedAudioStore.writeChunk(key, index, response)) {
+                // 半套固化音频比没有更糟：清干净再报错
+                TtsFixedAudioStore.deleteMessage(key)
+                controller.reportError("固化音频写入失败")
+                return@withContext null
+            }
+            index++
+        }
+
+        // 元数据以磁盘实际内容为准（连续分片数 + 目录总字节）
+        val chunkCount = TtsFixedAudioStore.chunkCount(key)
+        if (chunkCount <= 0) {
+            TtsFixedAudioStore.deleteMessage(key)
+            controller.reportError("固化音频写入失败")
+            return@withContext null
+        }
+
+        // 记下**合成当时**的 provider 配置：之后换 provider / 换音色，也不会让已固化的音频看起来像当前的
+        val provider = settings.getSelectedTTSProvider()
+        val remote = provider as? TTSProviderSetting.RemoteTTS
+        FixedAudioInfo(
+            chunkCount = chunkCount,
+            providerName = provider?.name.orEmpty(),
+            voice = remote?.voice.orEmpty(),
+            model = remote?.model.orEmpty(),
+            language = remote?.language.orEmpty(),
+            sizeBytes = TtsFixedAudioStore.totalBytes(key),
+            createdAt = System.currentTimeMillis(),
+        )
+    }
+
+    override fun speakFixedAudio(messageId: Uuid, chunkCount: Int) {
+        controller.speakFixed(messageId.toString(), chunkCount)
+    }
+
+    override suspend fun deleteFixedMessageAudio(messageId: Uuid): Boolean =
+        withContext(Dispatchers.IO) {
+            TtsFixedAudioStore.deleteMessage(messageId.toString())
+        }
+
     override fun stop() {
         controller.stop()
     }
@@ -189,4 +293,23 @@ private class CustomTtsStateImpl(
         controller.dispose()
         currentJob = null
     }
+}
+
+/**
+ * 消息原文 → 真正送去合成的文本。
+ *
+ * 顺序必须与所有播放调用点（`ChatMessageActions` / `TTSAutoPlay` / `TTSPrefetch`）**完全一致**：
+ * 先在原文上按设置做「只读引号内」「只读括号外」的过滤，最后由 [stripMarkdown] 去掉格式
+ * （`stripMarkdown` 是链路里最后一步，它会解码 HTML 实体，提前做会和界面显示不一致）。
+ * 顺序一变分片边界就跟着变，`TtsAudioCache` 的键也就变了，预生成的缓存会全部命中不了。
+ */
+private fun processTextForTts(text: String, settings: Settings): String {
+    var result = text
+    if (settings.displaySetting.ttsOnlyReadQuoted) {
+        result = result.extractQuotedContentAsText() ?: result
+    }
+    if (settings.displaySetting.ttsOnlyReadOutsideBrackets) {
+        result = result.removeBracketedContent() ?: result
+    }
+    return result.stripMarkdown()
 }

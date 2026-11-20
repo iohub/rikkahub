@@ -34,6 +34,7 @@ import me.rerere.ai.core.MessageRole
 import me.rerere.ai.provider.BuiltInTools
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ModelAbility
+import me.rerere.ai.ui.FixedAudioInfo
 import me.rerere.ai.ui.ToolApprovalState
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
@@ -75,6 +76,7 @@ import me.rerere.rikkahub.data.model.replaceUserRegexes
 import me.rerere.rikkahub.data.model.selectBranch
 import me.rerere.rikkahub.data.model.toMessageNode
 import me.rerere.rikkahub.data.model.withAssistantUpdate
+import me.rerere.rikkahub.data.model.withFixedAudio
 import me.rerere.rikkahub.data.model.withNodeFavorite
 import me.rerere.rikkahub.data.model.withToolApproval
 import me.rerere.rikkahub.data.model.withTranslation
@@ -1497,6 +1499,34 @@ class ChatService(
 
     suspend fun clearTranslationField(conversationId: Uuid, messageId: Uuid) {
         mutate(conversationId) { it.withTranslation(messageId, null) }
+    }
+
+    // ---- 消息级语音固化 ----
+
+    /**
+     * 记录一条消息的固化音频信息，[info] 为 null 时表示取消固化（不删文件，删文件由调用方负责）。
+     *
+     * 与 [clearTranslationField] 同一条通道：`mutate` 内部已经完成 flush 与队列复查，
+     * 这里不要再自己 flush 一次（否则整张 node 表会被重写两遍）。
+     */
+    suspend fun setMessageFixedAudio(conversationId: Uuid, messageId: Uuid, info: FixedAudioInfo?) {
+        mutate(conversationId) { it.withFixedAudio(messageId, info) }
+    }
+
+    /**
+     * 批量记录多条消息的固化音频信息。
+     *
+     * 关键点：**一次** `mutate`，在 transform 里把所有条目应用到同一个 `Conversation` 上，
+     * 因此无论多少条消息，都只 flush 一次、只触发一次队列复查——
+     * 逐条调用 [setMessageFixedAudio] 会让整会话的 node 表被重写 N 次。
+     */
+    suspend fun setMessagesFixedAudio(conversationId: Uuid, updates: Map<Uuid, FixedAudioInfo?>) {
+        if (updates.isEmpty()) return
+        mutate(conversationId) { conversation ->
+            updates.entries.fold(conversation) { acc, (messageId, info) ->
+                acc.withFixedAudio(messageId, info)
+            }
+        }
     }
 
     // ---- 消息操作 ----

@@ -214,6 +214,17 @@ class TtsController(
 
     // region 消息级语音固化
     /**
+     * 由上层（app 侧）在固化流程里上报一条可读错误，null 表示清除。
+     *
+     * 固化的「写盘」发生在 app 模块（`TtsFixedAudioStore.writeChunk`），失败原因只有那边知道；
+     * 这里把统一的状态通道开放出去，让写盘失败的提示与合成失败的提示走同一个 [error]。
+     * 不改变任何播放 / 存储行为。
+     */
+    fun reportError(message: String?) {
+        _error.update { message }
+    }
+
+    /**
      * 离线合成整段文本，供「固化」使用：调用方拿到列表后自己写 [TtsFixedAudioStore]。
      *
      * 文本处理与 [speak] 完全一致（同一个 [chunker]）：markdown 清洗等在 app 的 hook 层完成，

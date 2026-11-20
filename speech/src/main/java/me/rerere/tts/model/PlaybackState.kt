@@ -28,5 +28,3 @@ data class PlaybackState(
      */
     val messageId: String? = null
 )
-
-

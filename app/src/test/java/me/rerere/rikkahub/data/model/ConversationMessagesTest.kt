@@ -1,6 +1,7 @@
 package me.rerere.rikkahub.data.model
 
 import me.rerere.ai.core.MessageRole
+import me.rerere.ai.ui.FixedAudioInfo
 import me.rerere.ai.ui.ToolApprovalState
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
@@ -81,6 +82,47 @@ class ConversationMessagesTest {
     }
 
     @Test
+    fun `fixed audio info is set on the matching message and cleared by null`() {
+        val reply = UIMessage.assistant("hello")
+        val conversation = conversationOf(reply.toMessageNode())
+        val info = FixedAudioInfo(
+            chunkCount = 3,
+            providerName = "Remote TTS",
+            voice = "my-voice",
+            model = "qwen3-tts-base",
+            language = "Chinese",
+            sizeBytes = 4096L,
+            createdAt = 1_700_000_000_000L,
+        )
+
+        val fixated = conversation.withFixedAudio(reply.id, info)
+        assertEquals(info, fixated.currentMessages.single().fixedAudio)
+
+        val cleared = fixated.withFixedAudio(reply.id, null)
+        assertNull(cleared.currentMessages.single().fixedAudio)
+    }
+
+    @Test
+    fun `fixed audio for a missing message keeps the conversation unchanged`() {
+        val conversation = conversationOf(UIMessage.user("hi").toMessageNode())
+
+        assertEquals(conversation, conversation.withFixedAudio(Uuid.random(), FixedAudioInfo(chunkCount = 1)))
+    }
+
+    @Test
+    fun `fixed audio does not switch branches`() {
+        val first = UIMessage.assistant("first")
+        val second = UIMessage.assistant("second")
+        val conversation = conversationOf(MessageNode(messages = listOf(first, second), selectIndex = 1))
+
+        val node = conversation.withFixedAudio(first.id, FixedAudioInfo(chunkCount = 2)).messageNodes.single()
+
+        assertEquals(1, node.selectIndex)
+        assertEquals(2, node.messages[0].fixedAudio?.chunkCount)
+        assertNull(node.messages[1].fixedAudio)
+    }
+
+    @Test
     fun `approval is recorded on the pending tool`() {
         val reply = toolReply(ToolApprovalState.Pending)
         val toolCallId = reply.getTools().single().toolCallId
@@ -126,7 +168,8 @@ class ConversationMessagesTest {
 
     @Test
     fun `nothing to cancel returns null`() {
-        val conversation = conversationOf(UIMessage.user("hi").toMessageNode(), UIMessage.assistant("done").toMessageNode())
+        val conversation =
+            conversationOf(UIMessage.user("hi").toMessageNode(), UIMessage.assistant("done").toMessageNode())
 
         assertNull(conversation.cancelInterruptedTools())
         assertNull(Conversation.ofId(Uuid.random()).cancelInterruptedTools())

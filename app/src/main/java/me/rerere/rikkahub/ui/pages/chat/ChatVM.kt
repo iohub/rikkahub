@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import me.rerere.ai.provider.Model
+import me.rerere.ai.ui.FixedAudioInfo
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.ai.ui.isEmptyInputMessage
@@ -424,6 +425,21 @@ class ChatVM(
     fun clearTranslationField(messageId: Uuid) {
         viewModelScope.launch {
             chatService.clearTranslationField(_conversationId, messageId)
+        }
+    }
+
+    /** 记录 / 取消某条消息的固化音频信息（[info] = null 表示取消固化） */
+    fun setMessageFixedAudio(messageId: Uuid, info: FixedAudioInfo?) {
+        viewModelScope.launch {
+            chatService.setMessageFixedAudio(_conversationId, messageId, info)
+        }
+    }
+
+    /** 批量记录固化音频信息：只落库一次，不要在外面循环调用 [setMessageFixedAudio] */
+    fun setMessagesFixedAudio(updates: Map<Uuid, FixedAudioInfo?>) {
+        if (updates.isEmpty()) return
+        viewModelScope.launch {
+            chatService.setMessagesFixedAudio(_conversationId, updates)
         }
     }
 

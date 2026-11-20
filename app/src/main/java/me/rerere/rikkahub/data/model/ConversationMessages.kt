@@ -1,5 +1,6 @@
 package me.rerere.rikkahub.data.model
 
+import me.rerere.ai.ui.FixedAudioInfo
 import me.rerere.ai.ui.ToolApprovalState
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
@@ -49,6 +50,20 @@ internal fun Conversation.editMessage(messageId: Uuid, parts: List<UIMessagePart
 internal fun Conversation.withTranslation(messageId: Uuid, translation: String?): Conversation {
     val node = getMessageNodeByMessageId(messageId) ?: return this
     return upsertMessage(node.id, node.messages.first { it.id == messageId }.copy(translation = translation))
+}
+
+/**
+ * 设置消息的固化音频信息，[info] 为 null 时清除（取消固化）；消息不存在时原样返回。
+ *
+ * 只改内存里的快照，落库由调用方（`ChatService.mutate`）统一 flush 一次完成——
+ * 批量固化多条消息时不要在循环里各自 flush，否则每次都要重写整张 node 表。
+ */
+internal fun Conversation.withFixedAudio(messageId: Uuid, info: FixedAudioInfo?): Conversation {
+    val node = getMessageNodeByMessageId(messageId) ?: return this
+    val message = node.messages.first { it.id == messageId }
+    // 值没变就不要动树：批量更新里重复传入同一份信息时省掉一次列表复制
+    if (message.fixedAudio == info) return this
+    return upsertMessage(node.id, message.copy(fixedAudio = info))
 }
 
 /** 切换节点选中的分支，调用方负责校验节点和下标 */
