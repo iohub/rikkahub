@@ -64,9 +64,11 @@ class StepTTSProviderTest {
         val sent = body["instruction"]!!.jsonPrimitive.content
 
         assertEquals(STEP_INSTRUCTION_MAX_LENGTH, sent.length)
-        assertTrue("静态基调必须在截断后仍然完整", sent.startsWith(staticPart))
-        // 合并后的前 152 个字符是「静态 + '; '」，之后才开始出现动态内容
-        assertTrue(sent.substring(0, 152).endsWith("; "))
+        // 动态优先完整保留：被截断的是静态，动态必须一字不少地留在尾部
+        assertTrue("动态语气不能被静态挤掉", sent.endsWith(dynamicPart))
+        // 预算 = 200 - 150 - 2 = 48 个字符留给静态
+        assertTrue(sent.startsWith("甲".repeat(48)))
+        assertEquals("甲".repeat(48) + "; ", sent.substring(0, 50))
         assertTrue(sent.length < staticPart.length + dynamicPart.length)
     }
 

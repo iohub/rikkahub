@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import me.rerere.ai.ui.FixedAudioInfo
 import me.rerere.ai.ui.UIMessage
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.data.ai.ttsInstruct
 import me.rerere.rikkahub.ui.hooks.CustomTtsState
 import kotlin.uuid.Uuid
 
@@ -99,6 +100,8 @@ internal suspend fun runBatchFixate(
             messageId = message.id,
             text = text,
             forceRegenerate = false,
+            // 沿用这条回复当初的动态语气：缓存键含 instruct，语气一致才能命中工具播放时已缓存的音频
+            instruct = message.ttsInstruct(),
         )
         if (info != null) {
             updates[message.id] = info

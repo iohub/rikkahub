@@ -30,10 +30,13 @@ private val TEXT_TO_SPEECH_RULES = """
        what you are about to say. Examples: exciting news -> "excited and fast, rising energy";
        comforting the user -> "warm, soft, slow, reassuring". NEVER copy or paraphrase the static
        instructions the user configured in the settings, and never leave it empty.
-    3. `text` is the plain text of this reply that should be read out, with all markdown markers
+    3. Call it EXACTLY ONCE per reply. If this reply has several paragraphs or sections that should be
+       read out, merge them into ONE `text` argument instead of making several calls: several calls in
+       the same reply interrupt each other's playback, so only the last one is actually heard.
+    4. `text` is the plain text of this reply that should be read out, with all markdown markers
        (headings, bold/italic marks, inline code fences, bullet symbols, link syntax) removed.
        Pass only what is meant to be heard, not the formatting.
-    4. The delivery tone only affects the spoken audio. It must never change the content of your
+    5. The delivery tone only affects the spoken audio. It must never change the content of your
        written reply: the reply text itself stays complete and natural.
 """.trimIndent()
 
@@ -46,7 +49,9 @@ internal fun buildTextToSpeechTool(
     description = """
         Speak text aloud to the user using the device's text-to-speech engine.
         Whenever this tool is available you MUST call it exactly once in every reply, even if the
-        user did not explicitly ask for audio output.
+        user did not explicitly ask for audio output. Never call it more than once per reply: if
+        several parts of the reply should be read out, merge them into a single `text` argument
+        (additional calls in the same reply cut off the previous playback).
         The tool returns immediately; audio plays in the background on the device.
         Always pass natural, readable plain text without markdown formatting, plus an `instruct`
         that describes how this particular reply should be delivered.

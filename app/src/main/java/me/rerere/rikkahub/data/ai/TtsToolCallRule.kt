@@ -1,7 +1,16 @@
 package me.rerere.rikkahub.data.ai
 
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import me.rerere.ai.ui.UIMessage
+import me.rerere.ai.ui.UIMessagePart
 import me.rerere.rikkahub.data.ai.tools.local.TEXT_TO_SPEECH_TOOL_NAME
+
+/** `text_to_speech` 的正文参数名，同时也是判定「这次调用算不算数」的字段 */
+private const val TTS_TEXT_ARGUMENT = "text"
+
+/** `text_to_speech` 的动态语气参数名，重播 / 固化时要把它透传给 TTS controller */
+private const val TTS_INSTRUCT_ARGUMENT = "instruct"
 
 /**
  * 硬规则命中时的原始标记，用来和模型审查的结论区分开：
@@ -29,8 +38,19 @@ internal const val MISSING_TTS_TOOL_CALL_SUGGESTION =
  *
  * @return 命中违规时返回用户可读原因，否则 null
  */
-internal fun findMissingTtsToolCall(reply: UIMessage): String? =
-    if (reply.hasTtsToolCall()) null else MISSING_TTS_TOOL_CALL_REASON
+internal fun findMissingTtsToolCall(reply: UIMessage): String? {
+    if (reply.hasTtsToolCall()) return null
+    // 放行保护：这条回复里已经有**执行过**的其它工具（写文件、发消息、建日程……）。
+    // 重生成会整条丢弃这条回复（连同这些工具结果），模型很可能把副作用再执行一遍；
+    // 「必须调用 TTS」的收益远小于重复写操作的风险，所以这里放弃判定、直接放行。
+    // 只看 isExecuted：模型发了但被拒绝 / 还没执行的工具没有副作用，仍然可以判否。
+    if (reply.hasExecutedNonTtsToolCall()) return null
+    return MISSING_TTS_TOOL_CALL_REASON
+}
+
+/** 这条回复里是否存在**已执行**的非 TTS 工具调用（有副作用，重生成不安全） */
+private fun UIMessage.hasExecutedNonTtsToolCall(): Boolean =
+    getTools().any { it.toolName != TEXT_TO_SPEECH_TOOL_NAME && it.isExecuted }
 
 /**
  * 规则命中时拼出的不通过结论。
@@ -54,11 +74,55 @@ internal fun missingTtsToolCallResult(reply: UIMessage): ReplyReviewResult? {
 }
 
 /**
- * 这条消息里是否发起过 `text_to_speech` 调用。
+ * 这条消息里是否有**有效**的 `text_to_speech` 调用。
  *
  * 只看「模型有没有发起调用」，**不看执行状态**：工具还没执行完（output 为空）、执行报错都算调用过 ——
  * 这条规则约束的是模型的调用义务，执行与否不归模型决定。UI 侧（自动朗读 / 预取 / 语音模式）
  * 也用它判断「音频已经由工具负责，别再从 UI 播一遍」。
+ *
+ * 但 `text` 必须非空白：模型偶尔会传空串，那种调用念不出任何东西（静默无声），
+ * 算「有效调用」会让规则误放行。参数解析失败（空 input / 非法 JSON）同样视为没有有效调用。
  */
 internal fun UIMessage.hasTtsToolCall(): Boolean =
-    getTools().any { part -> part.toolName == TEXT_TO_SPEECH_TOOL_NAME }
+    getTools().any { part ->
+        part.toolName == TEXT_TO_SPEECH_TOOL_NAME && part.ttsTextArgument().isNotBlank()
+    }
+
+/**
+ * 这条回复当初调用 `text_to_speech` 时模型生成的动态语气指令。
+ *
+ * 手动重播 / 固化音频要沿用它：音频缓存键（`TtsAudioCache.buildKey`）把 instruct 算进去了，
+ * 语气一致才能命中同一份音频，用户点播放听到的语气也才和工具自动播放时一样。
+ *
+ * 取**最后一次**调用：一轮里多次调用时，后一次 `speak(flush = true)` 会打断前一次的播放，
+ * 用户实际听到的就是最后一次的语气（提示词也已要求每轮只调用一次，这里只是兜底）。
+ *
+ * @return 没有 TTS 调用 / 参数解析失败 / 字段缺失时返回 ""（等价于「只用设置里的静态配置」）
+ */
+internal fun UIMessage.ttsInstruct(): String =
+    getTools()
+        .lastOrNull { it.toolName == TEXT_TO_SPEECH_TOOL_NAME }
+        ?.ttsInstructArgument()
+        .orEmpty()
+
+/** 取这次 TTS 调用里真正要念的文本；解析失败 / 缺字段 / 空白都返回 "" */
+private fun UIMessagePart.Tool.ttsTextArgument(): String = stringArgument(TTS_TEXT_ARGUMENT)
+
+/** 取这次 TTS 调用里模型生成的动态语气；解析失败 / 缺字段返回 "" */
+private fun UIMessagePart.Tool.ttsInstructArgument(): String = stringArgument(TTS_INSTRUCT_ARGUMENT)
+
+/**
+ * 从工具调用参数里读一个字符串参数。
+ *
+ * `input` 可能是空串（流式未完成 / 旧消息）或非法 JSON，[UIMessagePart.Tool.inputAsJson]
+ * 已经把这两种情况兜成 `{}`；这里再兜一层「不是字符串字面量」的情况（例如 `"text": 123`）。
+ */
+private fun UIMessagePart.Tool.stringArgument(name: String): String =
+    runCatching {
+        (inputAsJson() as? JsonObject)
+            ?.get(name)
+            ?.let { it as? JsonPrimitive }
+            // 只认字符串字面量：模型偶尔把 instruct 传成数字/布尔，那不是可用的语气描述
+            ?.takeIf { it.isString }
+            ?.content
+    }.getOrNull().orEmpty().trim()

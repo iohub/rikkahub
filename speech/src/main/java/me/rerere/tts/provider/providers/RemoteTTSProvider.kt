@@ -110,6 +110,9 @@ class RemoteTTSProvider : TTSProvider<TTSProviderSetting.RemoteTTS> {
             else -> AudioFormat.WAV
         }
 
+        // metadata 是留给 UI / trace 排查用的，这里写**实际下发的合并值**（与请求体一致）：
+        // 只写静态配置会让排查时误以为本轮的动态语气没生效
+        val mergedInstructions = mergeTtsInstructions(providerSetting.instructions, request.instruct)
         emit(
             AudioChunk(
                 data = audioBytes,
@@ -117,14 +120,15 @@ class RemoteTTSProvider : TTSProvider<TTSProviderSetting.RemoteTTS> {
                 // 裸 PCM 需要采样率才能补 WAV 头; 其它格式自带头部, 不需要
                 sampleRate = if (isPcm) providerSetting.sampleRate else null,
                 isLast = true,
-                metadata = mapOf(
-                    "provider" to "remote",
-                    "model" to providerSetting.model,
-                    "voice" to providerSetting.voice,
-                    "language" to providerSetting.language,
-                    "instructions" to providerSetting.instructions,
-                    "responseFormat" to providerSetting.responseFormat,
-                )
+                metadata = buildMap {
+                    put("provider", "remote")
+                    put("model", providerSetting.model)
+                    put("voice", providerSetting.voice)
+                    put("language", providerSetting.language)
+                    // 合并后为空表示这次请求根本没带 instructions，键也不写，保持与旧版一致
+                    if (mergedInstructions.isNotBlank()) put("instructions", mergedInstructions)
+                    put("responseFormat", providerSetting.responseFormat)
+                }
             )
         )
     }.flowOn(Dispatchers.IO)

@@ -57,6 +57,9 @@ class ReplyQualityReviewer(
      * 不发起模型请求、不读设置、不会超时也不会 fail-open —— 判定只看本地工具调用记录，
      * 所以调用方可以让它绕过 [Settings.reviewerSetting] 的总开关单独生效。
      *
+     * 判定细节见 [findMissingTtsToolCall]：回复里已有**执行过**的其它工具时放行（避免重生成重跑副作用），
+     * `text` 参数为空白则视为没有有效调用。
+     *
      * @return 命中违规时返回不通过结论，通过时返回 null
      */
     fun enforceTtsToolCall(reply: UIMessage): ReplyReviewResult? = missingTtsToolCallResult(reply)

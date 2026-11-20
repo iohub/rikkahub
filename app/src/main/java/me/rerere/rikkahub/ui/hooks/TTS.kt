@@ -133,11 +133,15 @@ interface CustomTtsState {
      * @param text 消息原文。Markdown 清洗与「只读引号内 / 只读括号外」两项设置由本方法自己按
      *   [speak] 调用点同样的顺序处理，调用方直接传 `message.toText()` 即可
      * @param forceRegenerate true = 重新生成：合成时跳过音频缓存、强制请求服务端
+     * @param instruct 这条回复当初的动态语气（调用方传 `message.ttsInstruct()`）。音频缓存键包含它，
+     *   沿用同一个值才能命中工具播放时已经缓存过的音频，固化下来的语气也和当时听到的一致；
+     *   留空表示「只用设置里的静态配置」，行为与旧版相同
      */
     suspend fun fixateMessageAudio(
         messageId: Uuid,
         text: String,
         forceRegenerate: Boolean = false,
+        instruct: String = "",
     ): FixedAudioInfo?
 
     /**
@@ -214,6 +218,7 @@ private class CustomTtsStateImpl(
         messageId: Uuid,
         text: String,
         forceRegenerate: Boolean,
+        instruct: String,
     ): FixedAudioInfo? = withContext(Dispatchers.IO) {
         val key = messageId.toString()
         // 用 awaitLoaded 而不是 settingsFlow.value：加载完成前 value 是 dummy，
@@ -228,7 +233,12 @@ private class CustomTtsStateImpl(
 
         // 与手动播放共用同一个 controller + chunker：分片边界一致，固化下来的音频和点播放听到的一模一样。
         // forceRegenerate 时 bypassCache=true，跳过 TtsAudioCache 强制请求服务端（成功后回写缓存）。
-        val responses = controller.synthesizeAll(textToSpeak, bypassCache = forceRegenerate)
+        // instruct 必须与播放时一致：它参与缓存键，否则固化会重新合成一份「同一文本、不同语气」的音频
+        val responses = controller.synthesizeAll(
+            textToSpeak,
+            bypassCache = forceRegenerate,
+            instruct = instruct,
+        )
         if (responses.isEmpty()) {
             // 合成阶段失败（未选 provider / 任一分片重试耗尽）的原因已由 controller 写进 error
             return@withContext null

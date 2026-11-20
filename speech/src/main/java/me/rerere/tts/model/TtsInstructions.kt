@@ -17,9 +17,16 @@ private const val INSTRUCTION_JOINER = "; "
  * 3. 只有一边非空 → 直接返回那一边；
  * 4. 都非空 → 静态在前、动态在后，用 [INSTRUCTION_JOINER] 连接
  *    （静态是长期基调，动态是本次叠加的修饰，顺序反过来会读着别扭）；
- * 5. [maxLength] 不为 null 时对**合并结果**调用 `take(maxLength)`，即超出部分从尾部截断。
- *    这是给有服务端长度上限的 provider 用的（例如 StepFun 的 `instruction` ≤ 200 字符），
- *    截断放在合并之后，保证「先满足配置基调、再叠加本次语气」的语义不被破坏。
+ * 5. [maxLength] 不为 null 时（有服务端长度上限的 provider，例如 StepFun 的 `instruction` ≤ 200 字符）
+ *    **优先完整保留动态指令**：
+ *    - 只有一边非空 → 直接 `take(maxLength)`；
+ *    - 两边都非空且动态几乎占满预算（`dynamic.length >= maxLength - 连接符长度`，再拼静态也塞不进一个字）
+ *      → 只下发动态；
+ *    - 否则把剩余预算给静态：`maxLength - dynamic.length - 连接符长度` 个字，超出的静态从尾部砍掉。
+ *
+ *    为什么动态优先：动态是模型为**这一条**回复生成的语气，丢了这轮朗读就退回纯静态配置（白调一次工具）；
+ *    静态是长期配置，砍掉几个字只是少一点基调修饰，影响小得多。旧实现是在合并结果上直接
+ *    `take(maxLength)`，静态接近 200 字符时会把动态整段截掉，等于动态 instruct 完全失效。
  */
 internal fun mergeTtsInstructions(
     staticInstruction: String,
@@ -36,5 +43,20 @@ internal fun mergeTtsInstructions(
         else -> staticPart + INSTRUCTION_JOINER + dynamicPart
     }
 
-    return if (maxLength != null) merged.take(maxLength) else merged
+    if (maxLength == null) return merged
+    // 上限非正数时什么都下发不了；避免 take(负数) 抛 IllegalArgumentException
+    if (maxLength <= 0) return ""
+
+    return when {
+        // 只有一边非空：没有取舍问题，按上限从尾部截断即可
+        staticPart.isEmpty() || dynamicPart.isEmpty() -> merged.take(maxLength)
+        // 动态已经吃掉几乎整个预算（连连接符都放不下）：只保留动态，别让它被静态挤掉
+        dynamicPart.length >= maxLength - INSTRUCTION_JOINER.length -> dynamicPart.take(maxLength)
+        else -> {
+            val staticBudget = maxLength - dynamicPart.length - INSTRUCTION_JOINER.length
+            // trimEnd：静态被截断处可能正好落在空白上，留着会拼出 "xxx ; 动态" 这种脏串
+            val keptStatic = staticPart.take(staticBudget).trimEnd()
+            if (keptStatic.isEmpty()) dynamicPart else keptStatic + INSTRUCTION_JOINER + dynamicPart
+        }
+    }
 }

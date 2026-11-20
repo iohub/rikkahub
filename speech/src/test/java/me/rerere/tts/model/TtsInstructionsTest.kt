@@ -1,6 +1,7 @@
 package me.rerere.tts.model
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -35,12 +36,49 @@ class TtsInstructionsTest {
     }
 
     @Test
-    fun `maxLength truncates the merged tail`() {
-        assertEquals("warm; exc", mergeTtsInstructions("warm", "excited", maxLength = 9))
-        // 截断发生在合并之后：静态基调优先保留，动态语气被砍掉尾巴
-        assertEquals("warm; exci", mergeTtsInstructions("warm", "excited", maxLength = 10))
+    fun `maxLength keeps the dynamic instruction and shrinks the static part`() {
+        // 动态已经占满预算（只剩连接符都放不下）时只下发动态：静态完全让位，动态一字不丢
+        assertEquals("excited", mergeTtsInstructions("warm", "excited", maxLength = 9))
+        // 还塞得下连接符时，剩下的 1 个字符给静态
+        assertEquals("w; excited", mergeTtsInstructions("warm", "excited", maxLength = 10))
         // 合并结果本来就够短时不受影响
         assertEquals("warm; excited", mergeTtsInstructions("warm", "excited", maxLength = 200))
+    }
+
+    @Test
+    fun `maxLength keeps short dynamic intact when static is at the limit`() {
+        // 静态 200 字符（刚好等于上限）+ 动态 30 字符：旧实现会 take(200) 把动态整段砍掉
+        val staticPart = "甲".repeat(200)
+        val dynamicPart = "乙".repeat(30)
+
+        val merged = mergeTtsInstructions(staticPart, dynamicPart, maxLength = 200)
+
+        assertEquals(200, merged.length)
+        // 动态完整保留（尾部一字不少），被截断的是静态
+        assertTrue("动态指令必须完整保留", merged.endsWith(dynamicPart))
+        // 预算 = 200 - 30 - 2 = 168 个字留给静态
+        assertTrue(merged.startsWith("甲".repeat(168)))
+        assertEquals("甲".repeat(168) + "; ", merged.substring(0, 170))
+    }
+
+    @Test
+    fun `short static and long dynamic both survive when under the limit`() {
+        val staticPart = "甲".repeat(10)
+        val dynamicPart = "乙".repeat(60)
+
+        val merged = mergeTtsInstructions(staticPart, dynamicPart, maxLength = 200)
+
+        // 10 + "; " + 60 = 72，远没到上限，两边都原样保留
+        assertEquals("$staticPart; $dynamicPart", merged)
+        assertEquals(72, merged.length)
+    }
+
+    @Test
+    fun `maxLength narrower than the joiner keeps only the dynamic instruction`() {
+        assertEquals("ab", mergeTtsInstructions("static", "abcde", maxLength = 2))
+        // 上限非正数时什么都下发不了，也不能因为 take(负数) 抛异常
+        assertEquals("", mergeTtsInstructions("static", "abcde", maxLength = 0))
+        assertEquals("", mergeTtsInstructions("static", "abcde", maxLength = -1))
     }
 
     @Test

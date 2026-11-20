@@ -92,6 +92,7 @@ import me.rerere.rikkahub.data.repository.ConversationRepository
 import me.rerere.rikkahub.data.repository.FolderRepository
 import me.rerere.rikkahub.web.BadRequestException
 import me.rerere.rikkahub.web.NotFoundException
+import me.rerere.tts.provider.TTSProviderSetting
 import java.net.ConnectException
 import java.net.NoRouteToHostException
 import java.net.SocketTimeoutException
@@ -339,23 +340,32 @@ class ChatService(
     }
 
     /**
-     * 这一轮是不是「必须调用 text_to_speech」。三条同时满足才算：
+     * 这一轮是不是「必须调用 text_to_speech」。以下四条同时满足才算：
      *
      * 1. 会话所属助手启用了 TTS 本地工具。[getAssistantOf] 与 `ChatRequestFactory` 取助手的写法一致；
      *    `localTools` 不在会话固定配置里，所以这里拿到的是助手的真实值；
-     * 2. 本轮聊天模型支持工具调用（[ModelAbility.TOOL]）。provider 只在
+     * 2. 助手没有关闭工具提示词注入。规则文本（「每轮必须调用」）是随工具 systemPrompt 一起进
+     *    system prompt 的（`ChatRequestFactory` 同一判定），被关掉时模型根本看不到这条义务，
+     *    再拿它惩罚重生成只会白烧一次重生成；
+     * 3. 本轮聊天模型支持工具调用（[ModelAbility.TOOL]）。provider 只在
      *    `model.abilities.contains(TOOL) && tools.isNotEmpty()` 时才下发 tools，否则模型根本看不到这个工具。
      *    模型同样按 `ChatRequestFactory` 的做法取会话固定的那个（[getChatModelOf]）；
-     * 3. 当前有可用的 TTS provider（[getSelectedTTSProvider] 已处理内置 TTS 关闭时的回退），没配的话
-     *    工具跑起来也只是静默失败，不该逼模型重生成。
+     * 4. 当前 TTS provider 存在，**且真正会消费 instruct**：全仓只有 [TTSProviderSetting.RemoteTTS] 与
+     *    [TTSProviderSetting.Step] 的请求体带语气字段，其余 provider 会静默忽略 instruct。
+     *    对它们强制调用只能拿到「与纯静态配置完全一样的音频」，收益为零却要冒一次重生成的风险。
      *
-     * 任一条不满足就返回 false：没把工具交出去，模型不调用不是它的错。
+     * 任一条不满足就返回 false：没把工具交出去（或交出去也没用），模型不调用不是它的错。
      */
     private fun isTtsToolCallRequired(settings: Settings, conversation: Conversation): Boolean {
-        if (LocalToolOption.Tts !in settings.getAssistantOf(conversation).localTools) return false
+        val assistant = settings.getAssistantOf(conversation)
+        if (LocalToolOption.Tts !in assistant.localTools) return false
+        if (assistant.promptInjectionOverride.isToolPromptsDisabled) return false
         val model = settings.getChatModelOf(conversation) ?: return false
         if (ModelAbility.TOOL !in model.abilities) return false
-        return settings.getSelectedTTSProvider() != null
+        return when (settings.getSelectedTTSProvider()) {
+            is TTSProviderSetting.RemoteTTS, is TTSProviderSetting.Step -> true
+            else -> false
+        }
     }
 
     /**
@@ -381,16 +391,20 @@ class ChatService(
         val maxRetry = settings.reviewerSetting.maxRetry
         val origin = if (fromRule) "Rule ${result.raw}" else "Review"
         if (session.currentReviewRetryCount < maxRetry) {
+            // attempt 是「本次是第几次重试」的语义（从 1 开始），先算好再 mark：
+            // markPendingReviewRetry 会把计数 +1，日志和 toast 都取同一个局部值，
+            // 才不会出现日志 1/1、toast 0/1 这种对不上的情况
+            val attempt = session.currentReviewRetryCount + 1
             Log.w(
                 TAG,
                 "$origin failed (score ${result.score}), regenerating ${reply.id} " +
-                    "(${session.currentReviewRetryCount + 1}/$maxRetry): $reason",
+                    "($attempt/$maxRetry): $reason",
             )
             session.markPendingReviewRetry(reply.id)
             appEventBus.tryEmit(
                 AppEvent.ReplyReviewRetry(
                     conversationId = conversationId,
-                    attempt = session.currentReviewRetryCount,
+                    attempt = attempt,
                     maxAttempt = maxRetry,
                     reason = reason,
                 )

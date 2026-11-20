@@ -84,6 +84,7 @@ import me.rerere.hugeicons.stroke.MoreVertical
 import me.rerere.hugeicons.stroke.Share04
 import me.rerere.hugeicons.stroke.VolumeHigh
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.data.ai.ttsInstruct
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.data.datastore.getSelectedASRProvider
@@ -386,6 +387,8 @@ private fun ChatPageContent(
                 messageId = message.id,
                 text = message.toText(),
                 forceRegenerate = forceRegenerate,
+                // 与播放链路保持一致：动态语气参与缓存键，固化的音频才是用户刚才听到的那一份
+                instruct = message.ttsInstruct(),
             )
             if (info != null) {
                 vm.setMessageFixedAudio(message.id, info)

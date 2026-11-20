@@ -54,6 +54,19 @@ class StepTTSProvider : TTSProvider<TTSProviderSetting.Step> {
         // 但服务端会忽略未知字段 (responseFormat 也允许 ignoreUnknownKeys)
         val requestBody = buildStepSpeechRequest(providerSetting, request.text, request.instruct)
 
+        // 超过服务端上限时 mergeTtsInstructions 会砍静态的尾巴（动态优先完整保留）。
+        // 只记长度与两侧原始长度，不打全文：instruction 里可能有用户自己配置的私有描述
+        val mergedInstruction = mergeTtsInstructions(providerSetting.instruction, request.instruct)
+        if (mergedInstruction.length > STEP_INSTRUCTION_MAX_LENGTH) {
+            Log.w(
+                TAG,
+                "instruction truncated: merged=${mergedInstruction.length} " +
+                    "limit=$STEP_INSTRUCTION_MAX_LENGTH " +
+                    "static=${providerSetting.instruction.trim().length} " +
+                    "dynamic=${request.instruct.trim().length}"
+            )
+        }
+
         Log.i(
             TAG,
             "generateSpeech: model=${providerSetting.model} voice=${providerSetting.voice} format=${providerSetting.responseFormat}"
@@ -114,7 +127,8 @@ class StepTTSProvider : TTSProvider<TTSProviderSetting.Step> {
 
 /**
  * StepFun `instruction` 字段的服务端上限（≤200 字符）。
- * 设置页输入框与这里的截断共用同一个上限，避免「UI 能输进去、请求却被截」的不一致。
+ * 设置页输入框另有一份**数值相等的硬编码上限（200）**：UI 层引用不到 speech 模块的 internal 常量，
+ * 只能两边各存一份，改动时必须一起改，否则会出现「UI 能输进去、请求却被截」的不一致。
  */
 internal const val STEP_INSTRUCTION_MAX_LENGTH = 200
 
@@ -123,7 +137,8 @@ internal const val STEP_INSTRUCTION_MAX_LENGTH = 200
  *
  * 字段命名遵循阶跃官方 SDK 的 camelCase 约定；`instruction` 由设置页的静态
  * [TTSProviderSetting.Step.instruction] 与本次动态 [instruct] 合并而来（静态在前），
- * 合并结果超过 [STEP_INSTRUCTION_MAX_LENGTH] 时从尾部截断，合并后仍为空白则整键不下发。
+ * 合并结果超过 [STEP_INSTRUCTION_MAX_LENGTH] 时**优先完整保留动态指令**、只截静态的尾部
+ * （见 [mergeTtsInstructions]），合并后仍为空白则整键不下发。
  *
  * @param instruct 这一次朗读的动态语气指令，为空表示不叠加额外语气
  */
