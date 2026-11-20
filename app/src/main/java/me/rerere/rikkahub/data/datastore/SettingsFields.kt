@@ -86,6 +86,9 @@ internal val SETTINGS_FIELDS: List<SettingsField<*, *>> = with(SettingsStore) {
         json(NETWORK_SETTING, Settings::networkSetting) { copy(networkSetting = it) },
         plain(DEVELOPER_MODE, Settings::developerMode) { copy(developerMode = it) },
 
+        // 回复质量审查
+        json(REVIEWER_SETTING, Settings::reviewerSetting) { copy(reviewerSetting = it) },
+
         // 模型选择
         json(FAVORITE_MODELS, Settings::favoriteModels) { copy(favoriteModels = it) },
         uuid(SELECT_MODEL, Settings::chatModelId) { copy(chatModelId = it) },

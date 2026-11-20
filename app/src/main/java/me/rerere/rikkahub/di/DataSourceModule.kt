@@ -18,6 +18,7 @@ import me.rerere.rikkahub.data.ai.AIRequestInterceptor
 import me.rerere.rikkahub.data.ai.ConversationMetaGenerator
 import me.rerere.rikkahub.data.ai.MemoryConsolidationScheduler
 import me.rerere.rikkahub.data.ai.MemoryConsolidator
+import me.rerere.rikkahub.data.ai.ReplyQualityReviewer
 import me.rerere.rikkahub.data.ai.RequestLoggingInterceptor
 import me.rerere.rikkahub.data.ai.TranslationHandler
 import me.rerere.rikkahub.data.ai.UsageRecorder
@@ -165,6 +166,10 @@ val dataSourceModule = module {
 
     single {
         ConversationMetaGenerator(context = get(), providerManager = get(), usageRecorder = get())
+    }
+
+    single {
+        ReplyQualityReviewer(providerManager = get(), usageRecorder = get())
     }
 
     single<OkHttpClient> {

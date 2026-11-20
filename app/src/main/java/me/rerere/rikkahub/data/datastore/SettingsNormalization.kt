@@ -1,5 +1,7 @@
 package me.rerere.rikkahub.data.datastore
 
+import me.rerere.rikkahub.data.ai.prompts.DEFAULT_REVIEWER_PROMPT
+import me.rerere.rikkahub.data.ai.prompts.ReviewerPresetIds
 import me.rerere.tts.provider.TTSProviderSetting
 
 /** 读盘后和每次修改后都要过一遍，保证内存里的设置始终是规整的。 */
@@ -114,6 +116,22 @@ private fun Settings.withValuesInRange(): Settings = copy(
         )
     },
     ttsProviders = ttsProviders.map { provider -> provider.withValuesInRange() },
+    reviewerSetting = reviewerSetting.withValuesInRange(),
+)
+
+/** 审查重试次数上限：再多也只是把用户的等待时间翻倍 */
+private const val MAX_REVIEWER_RETRY = 3
+
+/**
+ * 审查配置的取值收敛。
+ *
+ * 预设 ID 认不出（旧版本删掉的预设、手改过的盘上数据）时回退平衡版；prompt 被清空时回填默认正文，
+ * 否则审查模型会收到一个空 prompt、每条回复都被判不合格。
+ */
+private fun ReviewerSetting.withValuesInRange(): ReviewerSetting = copy(
+    maxRetry = maxRetry.coerceIn(0, MAX_REVIEWER_RETRY),
+    presetId = presetId.takeIf { it in ReviewerPresetIds.KNOWN } ?: ReviewerPresetIds.BALANCED,
+    prompt = prompt.takeIf { it.isNotBlank() } ?: DEFAULT_REVIEWER_PROMPT,
 )
 
 /**
