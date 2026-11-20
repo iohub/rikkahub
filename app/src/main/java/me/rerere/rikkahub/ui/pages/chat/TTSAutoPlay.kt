@@ -5,6 +5,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
 import me.rerere.ai.core.MessageRole
+import me.rerere.rikkahub.data.ai.hasTtsToolCall
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.ui.context.LocalTTSState
@@ -25,6 +26,9 @@ fun TTSAutoPlay(vm: ChatVM, setting: Settings, conversation: Conversation) {
             ) {
                 val lastMessage = currentConversation.currentMessages.lastOrNull()
                 if (lastMessage != null && lastMessage.role == MessageRole.ASSISTANT) {
+                    // 本轮回复已调用 text_to_speech：音频由工具负责播放（且带模型为本轮生成的动态语气）。
+                    // 这里再 speak 一次会从头重放同一段话，等于把工具那次播放打断，所以直接跳过
+                    if (lastMessage.hasTtsToolCall()) return@collect
                     val text = lastMessage.toText()
                     var textToSpeak = text
                     if (updatedSetting.displaySetting.ttsOnlyReadQuoted) {

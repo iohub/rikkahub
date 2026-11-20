@@ -47,14 +47,18 @@ import me.rerere.rikkahub.data.ai.ChatTurnContext
 import me.rerere.rikkahub.data.ai.ConversationMetaGenerator
 import me.rerere.rikkahub.data.ai.MemoryConsolidationScheduler
 import me.rerere.rikkahub.data.ai.ReplyQualityReviewer
+import me.rerere.rikkahub.data.ai.ReplyReviewResult
 import me.rerere.rikkahub.data.ai.TranslationHandler
 import me.rerere.rikkahub.data.ai.mcp.McpManager
 import me.rerere.rikkahub.data.ai.prompts.buildCompressPrompt
 import me.rerere.rikkahub.data.ai.tools.InvalidMcpServerNamesException
+import me.rerere.rikkahub.data.ai.tools.local.LocalToolOption
 import me.rerere.rikkahub.data.ai.tools.shouldUseExternalWebSearch
+import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.getAssistantById
 import me.rerere.rikkahub.data.datastore.getCurrentAssistant
+import me.rerere.rikkahub.data.datastore.getSelectedTTSProvider
 import me.rerere.rikkahub.data.event.AppEvent
 import me.rerere.rikkahub.data.event.AppEventBus
 import me.rerere.rikkahub.data.files.FilesManager
@@ -280,13 +284,14 @@ class ChatService(
      * 未通过时**不 emit**，只记一个待重生成标记，交给 [onSessionGenerationFinished]（任务槽已清空）
      * 去重生成 —— 在生成 job 内直接调 regenerateAtMessage 会自我 cancel / 自我 join 死锁。
      * 达到重试上限时放行 emit，宁可交付一条不合格的回复也不能把会话卡住。
+     *
+     * 顺序上两处刻意安排：
+     * 1. 「必须调用 text_to_speech」是本地硬规则，放在审查总开关之前 —— 开关关掉它也照样生效；
+     * 2. 空文本放行放在硬规则之后 —— 纯工具调用（没有正文）的回复不能被「空回复放行」吞掉，
+     *    否则漏调 TTS 永远判不出来。
      */
     private suspend fun notifyGenerationDone(session: ConversationSession, conversationId: Uuid) {
         val settings = settingsStore.awaitLoaded()
-        if (!settings.reviewerSetting.enabled) {
-            _generationDoneFlow.emit(conversationId)
-            return
-        }
 
         val conversation = session.state.value
         // 还在等工具审批：这一轮没结束，等审批后的下一轮再审查
@@ -300,27 +305,85 @@ class ChatService(
                 _generationDoneFlow.emit(conversationId)
                 return
             }
-        // 空回复交给上游的错误处理，不在这里判不合格
+
+        // 本轮把 TTS 工具交给了模型，就必须调用它。这条只看本地工具调用记录，不花模型调用，
+        // 所以不受审查总开关、20s 超时与 fail-open 影响
+        val ttsRequired = isTtsToolCallRequired(settings, conversation)
+        if (ttsRequired) {
+            replyQualityReviewer.enforceTtsToolCall(reply)?.let { result ->
+                handleReviewFailure(session, conversationId, settings, reply, result, fromRule = true)
+                return
+            }
+        }
+
+        if (!settings.reviewerSetting.enabled) {
+            _generationDoneFlow.emit(conversationId)
+            return
+        }
+
+        // 空回复交给上游的错误处理，不在这里判不合格；硬规则已在上方先跑过
         if (reply.toText().isBlank()) {
             _generationDoneFlow.emit(conversationId)
             return
         }
 
-        val result = replyQualityReviewer.review(settings, conversation, reply)
+        // ttsRequired 再传一次：将来若有别的调用方直接调 review，规则也会在开头挡住，不会被 fail-open 吞掉
+        val result = replyQualityReviewer.review(settings, conversation, reply, ttsRequired = ttsRequired)
         if (result.passed) {
             session.resetReviewRetryState()
             _generationDoneFlow.emit(conversationId)
             return
         }
 
+        handleReviewFailure(session, conversationId, settings, reply, result, fromRule = false)
+    }
+
+    /**
+     * 这一轮是不是「必须调用 text_to_speech」。三条同时满足才算：
+     *
+     * 1. 会话所属助手启用了 TTS 本地工具。[getAssistantOf] 与 `ChatRequestFactory` 取助手的写法一致；
+     *    `localTools` 不在会话固定配置里，所以这里拿到的是助手的真实值；
+     * 2. 本轮聊天模型支持工具调用（[ModelAbility.TOOL]）。provider 只在
+     *    `model.abilities.contains(TOOL) && tools.isNotEmpty()` 时才下发 tools，否则模型根本看不到这个工具。
+     *    模型同样按 `ChatRequestFactory` 的做法取会话固定的那个（[getChatModelOf]）；
+     * 3. 当前有可用的 TTS provider（[getSelectedTTSProvider] 已处理内置 TTS 关闭时的回退），没配的话
+     *    工具跑起来也只是静默失败，不该逼模型重生成。
+     *
+     * 任一条不满足就返回 false：没把工具交出去，模型不调用不是它的错。
+     */
+    private fun isTtsToolCallRequired(settings: Settings, conversation: Conversation): Boolean {
+        if (LocalToolOption.Tts !in settings.getAssistantOf(conversation).localTools) return false
+        val model = settings.getChatModelOf(conversation) ?: return false
+        if (ModelAbility.TOOL !in model.abilities) return false
+        return settings.getSelectedTTSProvider() != null
+    }
+
+    /**
+     * 审查（或本地硬规则）不通过时的统一处理：占一次重生成机会并让 UI 提示，
+     * 达到上限就记日志并放行交付。
+     *
+     * 「不通过时不 emit」是这条链路的关键：emit 会立刻触发自动朗读，不能让不合格的回复先出声。
+     * 重生成本身由 [onSessionGenerationFinished] 在任务槽清空后做，这里只留标记。
+     *
+     * @param fromRule true 表示命中本地确定性规则（没有模型输出可看），日志里单独标出来便于排查
+     */
+    private suspend fun handleReviewFailure(
+        session: ConversationSession,
+        conversationId: Uuid,
+        settings: Settings,
+        reply: UIMessage,
+        result: ReplyReviewResult,
+        fromRule: Boolean,
+    ) {
         val reason = (result.issues.firstOrNull() ?: result.suggestion)
             .ifBlank { "score ${result.score}" }
             .take(REVIEW_RETRY_REASON_MAX_LENGTH)
         val maxRetry = settings.reviewerSetting.maxRetry
+        val origin = if (fromRule) "Rule ${result.raw}" else "Review"
         if (session.currentReviewRetryCount < maxRetry) {
             Log.w(
                 TAG,
-                "Review failed (score ${result.score}), regenerating ${reply.id} " +
+                "$origin failed (score ${result.score}), regenerating ${reply.id} " +
                     "(${session.currentReviewRetryCount + 1}/$maxRetry): $reason",
             )
             session.markPendingReviewRetry(reply.id)
@@ -335,8 +398,8 @@ class ChatService(
             return
         }
 
-        // 已达上限：放行，避免审查一直不合格时用户的对话框被卡死在重生成里
-        Log.w(TAG, "Review failed and retry limit reached ($maxRetry), delivering as is: $reason")
+        // 已达上限：放行，避免一直不合格时用户的对话框被卡死在重生成里
+        Log.w(TAG, "$origin failed and retry limit reached ($maxRetry), delivering as is: $reason")
         session.resetReviewRetryState()
         _generationDoneFlow.emit(conversationId)
     }

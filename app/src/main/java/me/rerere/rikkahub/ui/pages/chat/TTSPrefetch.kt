@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
 import kotlinx.coroutines.flow.collectLatest
 import me.rerere.ai.core.MessageRole
+import me.rerere.rikkahub.data.ai.hasTtsToolCall
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.getSelectedTTSProvider
 import me.rerere.rikkahub.data.model.Conversation
@@ -43,6 +44,9 @@ fun TTSPrefetch(vm: ChatVM, setting: Settings, conversation: Conversation) {
             // 5. 取最后一条助手消息，并做与 TTSAutoPlay 完全一致的文本过滤（顺序不能变，否则缓存键对不上）
             val lastMessage = currentConversation.currentMessages.lastOrNull()
             if (lastMessage == null || lastMessage.role != MessageRole.ASSISTANT) return@collectLatest
+            // 本轮回复已调用 text_to_speech：音频由工具用「模型为本轮生成的语气」合成并播放过了，
+            // 这里再用空 instruct 预取只会多合成一份不同缓存键的音频（真播放时命中不了），纯属浪费
+            if (lastMessage.hasTtsToolCall()) return@collectLatest
             val text = lastMessage.toText()
             var textToSpeak = text
             if (updatedSetting.displaySetting.ttsOnlyReadQuoted) {

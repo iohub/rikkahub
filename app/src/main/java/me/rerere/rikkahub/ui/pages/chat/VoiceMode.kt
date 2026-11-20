@@ -15,6 +15,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import me.rerere.ai.core.MessageRole
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.asr.ASRController
 import me.rerere.asr.ASRProviderSetting
@@ -22,6 +23,7 @@ import me.rerere.asr.providers.DashScopeASRController
 import me.rerere.asr.providers.OpenAIRealtimeASRController
 import me.rerere.asr.providers.VolcengineASRController
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.data.ai.hasTtsToolCall
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.getSelectedASRProvider
 import me.rerere.rikkahub.data.datastore.getSelectedTTSProvider
@@ -63,6 +65,22 @@ fun rememberVoiceModeStarter(vm: ChatVM, settings: Settings): () -> Unit {
         }
     }
 
+    // 语音轮的 speak 回调只拿得到文本：助手消息本身已经在会话状态里（回复文本就是 runTurn 结束后
+    // 从 session.state 的 currentMessages 取出来再 complete 的），所以能回查「本轮回复有没有调用过
+    // text_to_speech」。这里读的是调用时刻的最新状态，不会拿到 start() 那一刻的旧快照。
+    val replySpokeViaTtsTool: () -> Boolean = {
+        vm.conversation.value.currentMessages
+            .lastOrNull { it.role == MessageRole.ASSISTANT }
+            ?.hasTtsToolCall() == true
+    }
+    // playbackState.Ended 分片之间也会发一次；isSpeaking 直到整个合成/播放队列结束才变 false
+    val awaitSpeechFinished: suspend () -> Unit = {
+        combine(tts.isSpeaking, tts.error) { speaking, error ->
+            check(error == null) { error.orEmpty() }
+            !speaking
+        }.first { it }
+    }
+
     val start: () -> Unit = {
         val blocked = when {
             provider == null -> context.getString(R.string.chat_page_voice_configure_asr)
@@ -93,13 +111,15 @@ fun rememberVoiceModeStarter(vm: ChatVM, settings: Settings): () -> Unit {
                         // tts.speak() strips markdown itself; stripping twice would turn decoded
                         // entities like &lt;tag&gt; into real tags and drop them.
                         if (text.stripMarkdown().isNotBlank()) {
-                            tts.speak(text)
-                            // playbackState.Ended is also emitted between chunks. isSpeaking
-                            // remains true until the entire synthesis/playback queue finishes.
-                            combine(tts.isSpeaking, tts.error) { speaking, error ->
-                                check(error == null) { error.orEmpty() }
-                                !speaking
-                            }.first { it }
+                            // 本轮回复自己调用过 text_to_speech：音频已经由工具触发播放，而且带着模型
+                            // 为本轮生成的动态语气。这里再 speak 会把那段播放打断、从头再念一遍，
+                            // 所以只等它播完，交给下面的麦克风暂停逻辑
+                            if (replySpokeViaTtsTool()) {
+                                awaitSpeechFinished()
+                            } else {
+                                tts.speak(text)
+                                awaitSpeechFinished()
+                            }
                         }
                     }
                 } else {
