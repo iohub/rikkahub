@@ -290,6 +290,15 @@ class RouteActivity : ComponentActivity() {
                     is AppEvent.OpenUsageAccessSettings -> this@RouteActivity.openUsageAccessSettings()
                     is AppEvent.ChatGenerationUpdate -> Unit // 由 ChatNotificationManager 消费
                     is AppEvent.ChatGenerationEnded -> Unit // 由 ChatNotificationManager 消费
+                    // 回复被质量审查判否后自动重生成：让用户知道刚才那条为什么又变了
+                    is AppEvent.ReplyReviewRetry -> toastState.show(
+                        this@RouteActivity.getString(
+                            R.string.chat_reply_review_retry,
+                            event.attempt,
+                            event.maxAttempt,
+                            event.reason,
+                        )
+                    )
                 }
             }
         }

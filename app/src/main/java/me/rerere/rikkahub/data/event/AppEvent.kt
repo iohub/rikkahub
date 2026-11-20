@@ -15,6 +15,20 @@ sealed class AppEvent {
     ) : AppEvent()
 
     /**
+     * 回复质量审查未通过，正在自动重新生成。
+     *
+     * @property attempt 第几次重试（从 1 开始）
+     * @property maxAttempt 允许重试的上限
+     * @property reason 审查给出的理由，已截断
+     */
+    data class ReplyReviewRetry(
+        val conversationId: Uuid,
+        val attempt: Int,
+        val maxAttempt: Int,
+        val reason: String,
+    ) : AppEvent()
+
+    /**
      * 聊天生成结束（完成、失败或取消）。
      * [contentPreview] 为 null 时仅取消 Live Update 通知，不发送完成通知。
      */

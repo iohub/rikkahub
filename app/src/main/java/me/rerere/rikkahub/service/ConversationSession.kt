@@ -250,6 +250,37 @@ class ConversationSession(
     @Volatile
     var autoCompressedReplyId: Uuid? = null
 
+    // 质量审查没过、等着重生成的回复；非空表示任务槽清空后要拿它再生成一次。
+    // 只在任务槽空着时消费：生成 job 里直接重生成会自我取消、自我等待
+    @Volatile
+    private var pendingReviewRetryMessageId: Uuid? = null
+
+    // 这条回复已经因为审查失败重生成过几次；用户发新消息、审查通过或达到上限时归零
+    @Volatile
+    private var reviewRetryCount: Int = 0
+
+    /** 本轮回复已因审查失败重生成过几次，用来判断是否还有重试机会 */
+    val currentReviewRetryCount: Int get() = reviewRetryCount
+
+    /** 记下审查没过、待重生成的回复，并占用一次重试机会 */
+    @Synchronized
+    fun markPendingReviewRetry(messageId: Uuid) {
+        pendingReviewRetryMessageId = messageId
+        reviewRetryCount++
+    }
+
+    /** 取出待重生成的回复并清空标记（计数保留，仍算作已用掉一次机会）；没有待重生成时返回 null */
+    @Synchronized
+    fun consumePendingReviewRetry(): Uuid? =
+        pendingReviewRetryMessageId.also { pendingReviewRetryMessageId = null }
+
+    /** 审查通过、用户发新消息或主动停止时清零：下一轮从头开始计数 */
+    @Synchronized
+    fun resetReviewRetryState() {
+        pendingReviewRetryMessageId = null
+        reviewRetryCount = 0
+    }
+
     val isInUse: Boolean
         get() = refCount.get() > 0 || _generationJob.value != null ||
             inbox.state.value.items.isNotEmpty()

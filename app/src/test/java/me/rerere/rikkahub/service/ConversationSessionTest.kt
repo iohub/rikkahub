@@ -740,4 +740,33 @@ class ConversationSessionTest {
         assertEquals("locked history", store.persisted!!.currentMessages.first().toText())
         assertTrue(session.existsInDatabase)
     }
+
+    @Test
+    fun `review retry counts attempts and clears on reset`() {
+        val id = Uuid.random()
+        val session =
+            ConversationSession(id, Conversation.ofId(id), CoroutineScope(SupervisorJob()), FakeConversationStore(), {})
+        val first = Uuid.random()
+        val second = Uuid.random()
+
+        assertNull(session.consumePendingReviewRetry())
+        assertEquals(0, session.currentReviewRetryCount)
+
+        // 每次判否占用一次重试机会，pending 等着任务槽清空后取走
+        session.markPendingReviewRetry(first)
+        assertEquals(1, session.currentReviewRetryCount)
+        assertEquals(first, session.consumePendingReviewRetry())
+        assertNull(session.consumePendingReviewRetry())
+        // 取走不清计数：重生成后还要靠它判断是否还有机会
+        assertEquals(1, session.currentReviewRetryCount)
+
+        session.markPendingReviewRetry(second)
+        assertEquals(2, session.currentReviewRetryCount)
+        assertEquals(second, session.consumePendingReviewRetry())
+
+        // 审查通过、用户发新消息、用户停止或已达上限后都从零开始
+        session.resetReviewRetryState()
+        assertEquals(0, session.currentReviewRetryCount)
+        assertNull(session.consumePendingReviewRetry())
+    }
 }

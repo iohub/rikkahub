@@ -46,6 +46,7 @@ import me.rerere.rikkahub.data.ai.ChatRequestFactory
 import me.rerere.rikkahub.data.ai.ChatTurnContext
 import me.rerere.rikkahub.data.ai.ConversationMetaGenerator
 import me.rerere.rikkahub.data.ai.MemoryConsolidationScheduler
+import me.rerere.rikkahub.data.ai.ReplyQualityReviewer
 import me.rerere.rikkahub.data.ai.TranslationHandler
 import me.rerere.rikkahub.data.ai.mcp.McpManager
 import me.rerere.rikkahub.data.ai.prompts.buildCompressPrompt
@@ -97,6 +98,9 @@ import kotlin.uuid.Uuid
 
 private const val TAG = "ChatService"
 
+/** 提示里带出的审查理由最多这么长，太长的 issue 会把 toast 撑破 */
+private const val REVIEW_RETRY_REASON_MAX_LENGTH = 100
+
 data class ChatError(
     val id: Uuid = Uuid.random(),
     val title: String? = null,
@@ -120,6 +124,7 @@ class ChatService(
     private val memoryConsolidationScheduler: MemoryConsolidationScheduler,
     private val translationHandler: TranslationHandler,
     private val metaGenerator: ConversationMetaGenerator,
+    private val replyQualityReviewer: ReplyQualityReviewer,
     val mcpManager: McpManager,
     private val filesManager: FilesManager,
     private val folderRepository: FolderRepository,
@@ -243,11 +248,112 @@ class ChatService(
         if (session.state.value.isAwaitingToolApproval) {
             session.inbox.failReplyWaiters(context.getString(R.string.chat_page_voice_tool_approval))
         }
+
+        // 用户主动停止（取消）或这一轮已经失败时都不能再拉起重生成：停止后又被自动重生成，
+        // 用户会以为停止没生效；失败时错误已经报给用户了，接着重生成只会再报一次。pending 一并丢掉
+        if (cause != null) session.resetReviewRetryState()
+
+        // ① 审查没过就重生成：此时任务槽已经清空，重生成不会再自我取消 / 自我等待。
+        // 重试次数上限在 notifyGenerationDone 里判断，这里只管触发
+        val pendingRetry = if (cause == null) session.consumePendingReviewRetry() else null
+        if (pendingRetry != null) {
+            appScope.launch {
+                runCatching { regenerateAtMessage(session.id, pendingRetry) }
+                    .onFailure {
+                        Log.w(TAG, "Failed to regenerate ${session.id} after review", it)
+                        session.resetReviewRetryState()
+                    }
+            }
+            return
+        }
+
         appScope.launch {
             // 先压缩再处理收件箱：压缩任务结束时会再回到这里
             if (cause == null && launchAutoCompressIfNeeded(session) != null) return@launch
             dispatchInbox(session.id)
         }
+    }
+
+    /**
+     * 生成完成出口：先做质量审查，通过才 emit（TTS 自动播放 / 预生成监听这个流）。
+     *
+     * 未通过时**不 emit**，只记一个待重生成标记，交给 [onSessionGenerationFinished]（任务槽已清空）
+     * 去重生成 —— 在生成 job 内直接调 regenerateAtMessage 会自我 cancel / 自我 join 死锁。
+     * 达到重试上限时放行 emit，宁可交付一条不合格的回复也不能把会话卡住。
+     */
+    private suspend fun notifyGenerationDone(session: ConversationSession, conversationId: Uuid) {
+        val settings = settingsStore.awaitLoaded()
+        if (!settings.reviewerSetting.enabled) {
+            _generationDoneFlow.emit(conversationId)
+            return
+        }
+
+        val conversation = session.state.value
+        // 还在等工具审批：这一轮没结束，等审批后的下一轮再审查
+        if (conversation.isAwaitingToolApproval) {
+            _generationDoneFlow.emit(conversationId)
+            return
+        }
+
+        val reply = reviewTargetOf(session)
+            ?: run {
+                _generationDoneFlow.emit(conversationId)
+                return
+            }
+        // 空回复交给上游的错误处理，不在这里判不合格
+        if (reply.toText().isBlank()) {
+            _generationDoneFlow.emit(conversationId)
+            return
+        }
+
+        val result = replyQualityReviewer.review(settings, conversation, reply)
+        if (result.passed) {
+            session.resetReviewRetryState()
+            _generationDoneFlow.emit(conversationId)
+            return
+        }
+
+        val reason = (result.issues.firstOrNull() ?: result.suggestion)
+            .ifBlank { "score ${result.score}" }
+            .take(REVIEW_RETRY_REASON_MAX_LENGTH)
+        val maxRetry = settings.reviewerSetting.maxRetry
+        if (session.currentReviewRetryCount < maxRetry) {
+            Log.w(
+                TAG,
+                "Review failed (score ${result.score}), regenerating ${reply.id} " +
+                    "(${session.currentReviewRetryCount + 1}/$maxRetry): $reason",
+            )
+            session.markPendingReviewRetry(reply.id)
+            appEventBus.tryEmit(
+                AppEvent.ReplyReviewRetry(
+                    conversationId = conversationId,
+                    attempt = session.currentReviewRetryCount,
+                    maxAttempt = maxRetry,
+                    reason = reason,
+                )
+            )
+            return
+        }
+
+        // 已达上限：放行，避免审查一直不合格时用户的对话框被卡死在重生成里
+        Log.w(TAG, "Review failed and retry limit reached ($maxRetry), delivering as is: $reason")
+        session.resetReviewRetryState()
+        _generationDoneFlow.emit(conversationId)
+    }
+
+    /**
+     * 这一轮该审查哪条回复：就是生成器刚写完的那条（[ConversationSession.replyMessageId]）。
+     *
+     * 重新生成较早的消息时它不在会话末尾，不能用「最后一条助手消息」；生成期间分支可能被切走，
+     * 所以按 id 在所有节点里找。这一轮没有产出新回复（例如只发不收、模型没有输出）时返回 null，
+     * 交给调用方直接放行 —— 那种情况下审到的只会是上一轮已经交付过的旧回复。
+     */
+    private fun reviewTargetOf(session: ConversationSession): UIMessage? {
+        val conversation = session.state.value
+        val replyId = session.replyMessageId.value ?: return null
+        return conversation.messageNodes.asSequence()
+            .flatMap { it.messages.asSequence() }
+            .firstOrNull { it.id == replyId && it.role == MessageRole.ASSISTANT }
     }
 
     // 保留 UI/Web 的入口，生命周期和状态查询统一交给 SessionManager。
@@ -506,6 +612,8 @@ class ChatService(
         if (content.isEmptyInputMessage()) return
         val session = sessionManager.getOrCreate(conversationId)
         synchronized(session) {
+            // 新的用户输入算新一轮：审查失败的重试次数重新开始，上一轮的失败计数不带进来
+            session.resetReviewRetryState()
             // 没有排队的用户输入时，新消息就是用户要继续的意思；等待中的通知跟着这一轮发出
             if (session.inbox.state.value.messages.isEmpty()) session.inbox.resume()
             session.inbox.enqueue(content, answer)
@@ -604,7 +712,10 @@ class ChatService(
                 })
                 // Voice owns playback, including when its observer has already left the page.
                 // The ordinary autoplay collector must not read a late voice reply again.
-                if (queued.reply == null) _generationDoneFlow.emit(conversationId)
+                // 失败时这一轮已经报过错、写的内容是半截的，不该再触发 TTS 朗读
+                if (queued.reply == null && result != TurnResult.Failed) {
+                    notifyGenerationDone(session, conversationId)
+                }
             } catch (e: Exception) {
                 queued.reply?.completeExceptionally(e)
                 e.printStackTrace()
@@ -639,8 +750,9 @@ class ChatService(
                 // 存成 user 节点：重新生成和分支都和普通消息一样
                 session.update { it.copy(messageNodes = it.messageNodes + notices.toNoticeNode()) }
                 session.flush()
-                runTurn(session)
-                _generationDoneFlow.emit(conversationId)
+                val result = runTurn(session)
+                // 失败时同 sendQueuedMessage：已经报过错，不再拿半截内容去审查 / 朗读
+                if (result != TurnResult.Failed) notifyGenerationDone(session, conversationId)
             } catch (e: NotFoundException) {
                 Log.w(TAG, "sendQueuedNotices: conversation $conversationId not found, dropping notices")
                 session.inbox.takeNotices()
@@ -690,7 +802,7 @@ class ChatService(
                         runTurn(session, regenerateNodeId = node.id)
                     }
 
-                    _generationDoneFlow.emit(conversationId)
+                    notifyGenerationDone(session, conversationId)
                 } catch (e: Exception) {
                     reportFailure(session, e, R.string.error_title_regenerate_message)
                 }
@@ -739,7 +851,8 @@ class ChatService(
                             runTurn(session)
                         }
 
-                        _generationDoneFlow.emit(conversationId)
+                        // 还在等别的工具审批时 notifyGenerationDone 会自己放行 emit
+                        notifyGenerationDone(session, conversationId)
                     }
                 } catch (e: Exception) {
                     reportFailure(session, e, R.string.error_title_tool_approval)
@@ -1607,6 +1720,9 @@ class ChatService(
         val session = sessionManager.get(conversationId) ?: return
         val jobs = synchronized(session) {
             session.inbox.pause()
+            // 用户按了停止：审查没过的那条不要再被拉起来重生成。
+            // 取消的任务本身结束时会再清一次，这里先清是为了覆盖「审查刚判否、任务恰好正常结束」的窗口
+            session.resetReviewRetryState()
             session.cancelJobs()
         }
         if (jobs.isEmpty()) return

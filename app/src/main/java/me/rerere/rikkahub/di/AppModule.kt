@@ -160,6 +160,7 @@ val appModule = module {
             memoryConsolidationScheduler = get(),
             translationHandler = get(),
             metaGenerator = get(),
+            replyQualityReviewer = get(),
             mcpManager = get(),
             filesManager = get(),
             folderRepository = get(),
