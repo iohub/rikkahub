@@ -259,13 +259,23 @@ class ConversationSession(
     @Volatile
     private var reviewRetryCount: Int = 0
 
+    // 审查打回时给生成模型的校正指令；只对紧接着那一次重生成有效，取走即清空
+    @Volatile
+    private var pendingReviewFeedback: String? = null
+
     /** 本轮回复已因审查失败重生成过几次，用来判断是否还有重试机会 */
     val currentReviewRetryCount: Int get() = reviewRetryCount
 
-    /** 记下审查没过、待重生成的回复，并占用一次重试机会 */
+    /**
+     * 记下审查没过、待重生成的回复，并占用一次重试机会。
+     *
+     * [feedback] 是给模型看的完整校正指令（「哪里错了、怎么改」）。toast 上那句被截断到 100 字的
+     * reason 不够模型用，这里单独存一份；为 null 时清掉旧值，避免上一轮的指令串到这一轮。
+     */
     @Synchronized
-    fun markPendingReviewRetry(messageId: Uuid) {
+    fun markPendingReviewRetry(messageId: Uuid, feedback: String? = null) {
         pendingReviewRetryMessageId = messageId
+        pendingReviewFeedback = feedback
         reviewRetryCount++
     }
 
@@ -274,10 +284,16 @@ class ConversationSession(
     fun consumePendingReviewRetry(): Uuid? =
         pendingReviewRetryMessageId.also { pendingReviewRetryMessageId = null }
 
+    /** 取出待重生成那条回复的校正指令并清空；这次重生成用完就没有了 */
+    @Synchronized
+    fun consumePendingReviewFeedback(): String? =
+        pendingReviewFeedback.also { pendingReviewFeedback = null }
+
     /** 审查通过、用户发新消息或主动停止时清零：下一轮从头开始计数 */
     @Synchronized
     fun resetReviewRetryState() {
         pendingReviewRetryMessageId = null
+        pendingReviewFeedback = null
         reviewRetryCount = 0
     }
 

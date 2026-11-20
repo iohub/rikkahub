@@ -134,6 +134,14 @@ data class DiffMetadata(
 data class TtsVoiceMetadata(
     @SerialName("tts_instruct")
     val instruct: String? = null,
+    /**
+     * 这个 part 上累计剥离掉的完整 `<tts_voice_control>…</tts_voice_control>` 块数量。
+     *
+     * 供质量审查判断「恰好一个块」用: 块本体已从正文删掉, 审查拿到的文本里看不到标签, 只能靠这个计数回读。
+     * 内容为空的块也计数 —— 空块同样违反约定。可空是为了兼容旧会话(那里的 JSON 没有这个 key)。
+     */
+    @SerialName("tts_block_count")
+    val blockCount: Int? = null,
 ) : PartMetadata
 
 /**

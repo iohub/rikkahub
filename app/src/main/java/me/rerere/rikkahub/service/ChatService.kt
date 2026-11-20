@@ -103,6 +103,16 @@ private const val TAG = "ChatService"
 /** 提示里带出的审查理由最多这么长，太长的 issue 会把 toast 撑破 */
 private const val REVIEW_RETRY_REASON_MAX_LENGTH = 100
 
+/**
+ * 打回时给生成模型的校正指令的长度上限（按「条数 × 单条长度」限制，不整段截断）。
+ *
+ * 不截整天是因为末尾的 `</review_feedback>` 被削掉会破坏格式，反而带偏模型；这里限制输入侧：
+ * 最多 3 条问题、每条 150 字、建议 240 字，加上固定段落大概 900 字。
+ */
+private const val REVIEW_FEEDBACK_MAX_ISSUES = 3
+private const val REVIEW_FEEDBACK_ISSUE_MAX_LENGTH = 150
+private const val REVIEW_FEEDBACK_SUGGESTION_MAX_LENGTH = 240
+
 data class ChatError(
     val id: Uuid = Uuid.random(),
     val title: String? = null,
@@ -259,8 +269,10 @@ class ChatService(
         // 重试次数上限在 notifyGenerationDone 里判断，这里只管触发
         val pendingRetry = if (cause == null) session.consumePendingReviewRetry() else null
         if (pendingRetry != null) {
+            // 校正指令与待重生成标记成对取出：取走即清空，只给紧接着的这一次重生成用
+            val feedback = session.consumePendingReviewFeedback()
             appScope.launch {
-                runCatching { regenerateAtMessage(session.id, pendingRetry) }
+                runCatching { regenerateAtMessage(session.id, pendingRetry, feedback) }
                     .onFailure {
                         Log.w(TAG, "Failed to regenerate ${session.id} after review", it)
                         session.resetReviewRetryState()
@@ -349,7 +361,7 @@ class ChatService(
                 "$origin failed (score ${result.score}), regenerating ${reply.id} " +
                     "($attempt/$maxRetry): $reason",
             )
-            session.markPendingReviewRetry(reply.id)
+            session.markPendingReviewRetry(reply.id, buildReviewFeedback(result))
             appEventBus.tryEmit(
                 AppEvent.ReplyReviewRetry(
                     conversationId = conversationId,
@@ -365,6 +377,45 @@ class ChatService(
         Log.w(TAG, "$origin failed and retry limit reached ($maxRetry), delivering as is: $reason")
         session.resetReviewRetryState()
         _generationDoneFlow.emit(conversationId)
+    }
+
+    /**
+     * 拼出打回时发给生成模型的校正指令。
+     *
+     * toast 上那句 reason 被截到 100 字，只够人扫一眼；模型需要知道「哪里错了、按什么标准改」，
+     * 所以单独拼一份完整文本，随下一次重生成作为一条 synthetic user 消息追加到请求末尾
+     * （见 `ChatRequestFactory.buildStep`），只在那一轮生效、不落库。
+     *
+     * 固定段落里把 `<tts_voice_control>` 的约定再复述一遍：确定性校验打回时，
+     * 这条约定就是模型这次唯一需要修正的东西。
+     */
+    private fun buildReviewFeedback(result: ReplyReviewResult): String {
+        val suggestion = result.suggestion.trim().take(REVIEW_FEEDBACK_SUGGESTION_MAX_LENGTH)
+        // issues 为空时用 suggestion 兜底，至少让模型看到一条「必须修正的问题」
+        val issues = result.issues
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .take(REVIEW_FEEDBACK_MAX_ISSUES)
+            .map { it.take(REVIEW_FEEDBACK_ISSUE_MAX_LENGTH) }
+            .ifEmpty { listOfNotNull(suggestion.takeIf { it.isNotBlank() }) }
+        return buildString {
+            appendLine("<review_feedback>")
+            appendLine("你刚刚那版回复没有通过系统自检，请把整条回复重新生成一遍。")
+            if (issues.isNotEmpty()) {
+                appendLine("必须修正的问题：")
+                issues.forEach { append("- ").appendLine(it) }
+            }
+            // 已经拿 suggestion 当兜底问题时不再重复一遍，避免同一个要求出现两次
+            if (suggestion.isNotBlank() && result.issues.isNotEmpty()) {
+                append("修改要求：").appendLine(suggestion)
+            }
+            appendLine(
+                "如果原文里有 <tts_voice_control> 块：整条回复有且只能有一个，必须在正文之后单独成段，" +
+                    "块内用一段自然语言写清语气、音量、语速、音色、气息、情绪。"
+            )
+            appendLine("只输出修正后的正文与那个块，不要解释、不要道歉、不要提到这段提示。")
+            append("</review_feedback>")
+        }
     }
 
     /**
@@ -802,8 +853,13 @@ class ChatService(
 
     // ---- 重新生成消息 ----
 
-    /** 重新生成用户消息时去掉它之后的节点再回复；重新生成助手消息时在它的节点上新开一个分支 */
-    fun regenerateAtMessage(conversationId: Uuid, messageId: Uuid) {
+    /**
+     * 重新生成用户消息时去掉它之后的节点再回复；重新生成助手消息时在它的节点上新开一个分支。
+     *
+     * [reviewFeedback] 是审查打回时给模型的校正指令，只在这一次请求里生效；手动重生成时为 null。
+     * 带默认值是为了保持源码兼容（UI、Web 路由都用两个参数的调用）。
+     */
+    fun regenerateAtMessage(conversationId: Uuid, messageId: Uuid, reviewFeedback: String? = null) {
         val session = sessionManager.getOrCreate(conversationId)
         synchronized(session) {
             val previousJob = session.getJob()
@@ -825,7 +881,7 @@ class ChatService(
                         session.flush()
                         runTurn(session)
                     } else {
-                        runTurn(session, regenerateNodeId = node.id)
+                        runTurn(session, regenerateNodeId = node.id, reviewFeedback = reviewFeedback)
                     }
 
                     // 失败时同 sendQueuedMessage：已经报过错，不再拿半截内容去审查 / 朗读
@@ -899,8 +955,14 @@ class ChatService(
      * 发送的最后一条是助手消息时从它继续（比如审批之后），回复写回那条消息。
      * 开了自动压缩时，工具执行完发现上下文占用达到阈值就在这里压缩，之后的步骤写进检查点后面新的一条回复。
      * 失败时报告错误、暂停消息队列并返回 [TurnResult.Failed]；取消时直接抛出。
+     *
+     * [reviewFeedback] 只在审查打回后的那次重生成里非空，作为一次性提示带进请求（不落库）。
      */
-    private suspend fun runTurn(session: ConversationSession, regenerateNodeId: Uuid? = null): TurnResult {
+    private suspend fun runTurn(
+        session: ConversationSession,
+        regenerateNodeId: Uuid? = null,
+        reviewFeedback: String? = null,
+    ): TurnResult {
         val conversationId = session.id
         // 先清理上一轮状态；确定历史后，仅为真正的续写恢复消息 ID。
         session.replyMessageId.value = null
@@ -925,7 +987,7 @@ class ChatService(
             // 中途压缩把检查点插在回复之后；重新生成较早的消息时后面还有别的节点，不压缩
             val canCompress = regenerateNodeId == null || conversation.messageNodes.lastOrNull()?.id == regenerateNodeId
 
-            val turn = requestFactory.createContext(settings, conversation)
+            val turn = requestFactory.createContext(settings, conversation, reviewFeedback)
             senderName = if (turn.assistant.useAssistantAvatar) {
                 turn.assistant.name.ifEmpty { context.getString(R.string.assistant_page_default_assistant) }
             } else {

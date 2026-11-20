@@ -91,8 +91,11 @@ private fun logLongText(label: String, text: String) {
  *
  * 正常对话和压缩用同一份上下文组装请求，系统提示词、工具定义、参数和 sessionId 都相同，
  * 压缩请求的前缀才能和上一轮对话一致，命中提示词缓存。
+ *
+ * `data class` 只为拿 `copy`：压缩复用同一个上下文，但必须把一次性的 [reviewFeedback] 抹掉
+ * （见 `requestCompressionSummary`），否则审查反馈会被塞进压缩请求。
  */
-class ChatTurnContext(
+data class ChatTurnContext(
     val settings: Settings,
     val assistant: Assistant,
     val model: Model,
@@ -102,6 +105,8 @@ class ChatTurnContext(
     val workspaceCwd: String?,
     val memories: List<MemoryFile>,
     val tools: List<Tool>,
+    /** 质量审查打回时给模型的校正指令，只在这一次请求里追加到末尾；正常对话为 null */
+    val reviewFeedback: String? = null,
 )
 
 /**
@@ -142,7 +147,11 @@ class ChatRequestFactory(
     )
 
     /** 解析本轮的助手、模型、记忆和工具；MCP 服务名不合法时抛出 InvalidMcpServerNamesException */
-    suspend fun createContext(settings: Settings, conversation: Conversation): ChatTurnContext {
+    suspend fun createContext(
+        settings: Settings,
+        conversation: Conversation,
+        reviewFeedback: String? = null,
+    ): ChatTurnContext {
         // 模型、思考级别、搜索、工具等以会话上固定的配置为准
         val assistant = settings.getAssistantOf(conversation)
         val model = settings.getChatModelOf(conversation)
@@ -168,6 +177,7 @@ class ChatRequestFactory(
                 conversationId = conversation.id,
                 workspaceCwd = conversation.workspaceCwd,
             ),
+            reviewFeedback = reviewFeedback,
         )
     }
 
@@ -279,7 +289,9 @@ class ChatRequestFactory(
         messages: List<UIMessage>,
         compressPrompt: String,
     ): String {
-        val (requestMessages, params) = buildStep(turn, messages)
+        // 压缩复用同一个 turn，但必须把一次性的审查反馈抹掉：那是「重做上一条回复」的指令，
+        // 混进摘要请求会让模型把重做的要求写进摘要，也破坏了与上一轮一致的请求前缀
+        val (requestMessages, params) = buildStep(turn.copy(reviewFeedback = null), messages)
         // 压缩指令不经过输入转换器，模板转换器会把其中的花括号当成模板语法
         val result = withRetry(
             policy = turn.settings.retryPolicy(),
@@ -391,6 +403,17 @@ class ChatRequestFactory(
             processingStatus = processingStatus,
             workspaceCwd = turn.workspaceCwd,
         ).expandNotices()
+        // 审查打回时的校正指令：只对这一次请求有效，所以放在这里而不是并进历史。
+        // 必须在输入转换器**之后**追加 —— 模板转换器会把文本里的花括号当成模板语法
+        // （压缩指令同样因为这一点不走转换器），其它转换器也可能改写这段文本。
+        // 用 isSynthetic 标记成请求期间的内部消息（不落库），并放在末尾让「重做」获得最强的注意力。
+        val withFeedback = turn.reviewFeedback
+            ?.takeIf { it.isNotBlank() }
+            ?.let { feedback ->
+                Log.i(TAG, "buildStep: appending review feedback (${feedback.length} chars)")
+                requestMessages + UIMessage.user(feedback).copy(isSynthetic = true)
+            }
+            ?: requestMessages
         // 转换前的 system：用户 systemPrompt + 记忆 + 工具 prompt 三段，验证记忆/工具两个开关最直接
         logLongText("system prompt (assembled, before transformers)[conv=${turn.conversationId}]", assembledSystem)
         // 转换后的终态 system：模式注入/世界书/占位符替换/workspace 等改动后的真实内容
@@ -421,7 +444,7 @@ class ChatRequestFactory(
             },
             sessionId = turn.conversationId.toString(),
         )
-        return StepRequest(requestMessages, params)
+        return StepRequest(withFeedback, params)
     }
 }
 

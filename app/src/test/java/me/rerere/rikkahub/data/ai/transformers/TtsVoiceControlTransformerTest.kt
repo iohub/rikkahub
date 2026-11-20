@@ -1,9 +1,12 @@
 package me.rerere.rikkahub.data.ai.transformers
 
 import me.rerere.ai.core.MessageRole
+import me.rerere.ai.ui.TtsVoiceMetadata
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
+import me.rerere.ai.ui.metadataAs
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -70,13 +73,17 @@ class TtsVoiceControlTransformerTest {
     }
 
     @Test
-    fun `empty block should be dropped without metadata`() {
-        // 模型偶尔会输出一个空块：块要删掉，但不能写入空语气（否则会覆盖掉旧值）
+    fun `empty block should be dropped without instruct`() {
+        // 模型偶尔会输出一个空块：块要删掉，但不能写入空语气（否则会覆盖掉旧值）。
+        // 不过「出现过空块」本身是违规事实，块计数要留下 —— 审查靠它判「块内没有内容」
         val result = transform("$BODY\n\n<tts_voice_control>   \n  </tts_voice_control>")
 
         assertEquals(BODY, result.toText())
         assertEquals("", result.ttsVoiceInstruct())
-        assertNull(result.parts.filterIsInstance<UIMessagePart.Text>().single().metadata)
+        val metadata = result.parts.filterIsInstance<UIMessagePart.Text>().single().metadataAs<TtsVoiceMetadata>()
+        assertNotNull(metadata)
+        assertNull(metadata?.instruct)
+        assertEquals(1, metadata?.blockCount ?: 0)
     }
 
     @Test
@@ -117,6 +124,50 @@ class TtsVoiceControlTransformerTest {
         val result = transform("$BODY\n\n<tts_voice_control>$SAD_INSTRUCT</tts_voice_control>\n\n")
 
         assertEquals(BODY, result.toText())
+    }
+
+    @Test
+    fun `block count should be one for a single block`() {
+        // 块本体已从正文删除，审查只能靠 metadata 里的计数判断「恰好一个块」
+        val result = transform("$BODY\n\n<tts_voice_control>$SAD_INSTRUCT</tts_voice_control>")
+
+        assertEquals(1, result.ttsVoiceBlockCount())
+        assertNotEquals("", result.ttsVoiceInstruct())
+    }
+
+    @Test
+    fun `block count should not be swallowed by last-wins`() {
+        // 语气只保留最后一个块(lastOrNull)，但计数必须把两个都算上，否则「只能有一个块」查不出来
+        val result = transform(
+            "$BODY\n\n<tts_voice_control>平静地念</tts_voice_control>\n\n" +
+                "<tts_voice_control>急促而激动</tts_voice_control>"
+        )
+
+        assertEquals(2, result.ttsVoiceBlockCount())
+        assertEquals("急促而激动", result.ttsVoiceInstruct())
+    }
+
+    @Test
+    fun `block count should stay one after repeated transforms`() {
+        // visualTransform / transform / onGenerationFinish 会对同一段文本各剥一遍，
+        // 后两遍里已经没有块，计数不能跟着再涨，否则 1 个块会被数成 3 个、审查永远判否
+        val first = transform("$BODY\n\n<tts_voice_control>$SAD_INSTRUCT</tts_voice_control>")
+        val second = listOf(first).transformTtsVoiceControl().single()
+        val third = listOf(second).transformTtsVoiceControl().single()
+
+        assertEquals(1, third.ttsVoiceBlockCount())
+        assertEquals(first, third)
+        assertEquals(SAD_INSTRUCT, third.ttsVoiceInstruct())
+    }
+
+    @Test
+    fun `empty block should still be counted`() {
+        // 空块不写语气（不能覆盖旧值），但它是违规事实，必须计数
+        val result = transform("$BODY\n\n<tts_voice_control>   \n  </tts_voice_control>")
+
+        assertEquals(BODY, result.toText())
+        assertEquals(1, result.ttsVoiceBlockCount())
+        assertEquals("", result.ttsVoiceInstruct())
     }
 
     private fun transform(text: String): UIMessage =

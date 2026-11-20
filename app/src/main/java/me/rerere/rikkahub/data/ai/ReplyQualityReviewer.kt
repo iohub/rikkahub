@@ -7,10 +7,14 @@ import kotlinx.serialization.Serializable
 import me.rerere.ai.provider.ProviderManager
 import me.rerere.ai.ui.UIMessage
 import me.rerere.rikkahub.data.ai.prompts.fillReviewerPrompt
+import me.rerere.rikkahub.data.ai.tools.local.LocalToolOption
+import me.rerere.rikkahub.data.ai.transformers.ttsVoiceBlockCount
+import me.rerere.rikkahub.data.ai.transformers.ttsVoiceInstruct
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.findModelById
 import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.data.model.Conversation
+import me.rerere.rikkahub.data.model.getAssistantOf
 import me.rerere.rikkahub.utils.JsonInstant
 
 private const val TAG = "ReplyQualityReviewer"
@@ -63,6 +67,29 @@ class ReplyQualityReviewer(
         val replyText = reply.toText().trim()
         if (replyText.isEmpty()) return failOpen("empty reply")
 
+        // 确定性校验先于 LLM 审查：`<tts_voice_control>` 块已经被 TtsVoiceControlTransformer 从正文里剥掉，
+        // toText() 里看不到任何标签，这种纯格式问题让辅助模型猜只会白烧一次 20 秒的调用。
+        // 「需不需要有块」必须与 ChatRequestFactory 注入规范的条件同源，否则会出现
+        // 「根本没注入规范却要求必须有块」的死循环。另外，已经剥到过块（blockCount > 0）说明模型确实在用
+        // 这个格式，此时无论设置怎么变都要校验块内非空。
+        val assistant = settings.getAssistantOf(conversation)
+        val effectiveSystemPrompt =
+            if (assistant.allowConversationSystemPrompt && !conversation.customSystemPrompt.isNullOrBlank()) {
+                conversation.customSystemPrompt
+            } else {
+                assistant.systemPrompt
+            }
+        val blockCount = reply.ttsVoiceBlockCount()
+        val requiresBlock =
+            (LocalToolOption.Tts in assistant.localTools && !assistant.promptInjectionOverride.disableAll) ||
+                effectiveSystemPrompt.contains("tts_voice_control") ||
+                blockCount > 0
+        checkVoiceControlBlock(
+            requiresBlock = requiresBlock,
+            blockCount = blockCount,
+            instruct = reply.ttsVoiceInstruct(),
+        )?.let { return it }
+
         // 没配审查模型时跟随快速模型，语义和记忆整理一致
         val model = settings.reviewerSetting.modelId?.let { settings.findModelById(it) }
             ?: settings.findModelById(settings.fastModelId)
@@ -111,6 +138,58 @@ class ReplyQualityReviewer(
         raw = reason,
     )
 }
+
+/**
+ * 确定性校验：`<tts_voice_control>` 块必须**恰好一个**且块内非空。
+ *
+ * 纯函数、不挂起、不碰任何外部依赖，所以可以直接单测：审查链路上真正会误判的部分在 LLM 那边，
+ * 这条格式约定不该也交给它去猜。块本体已经被 `TtsVoiceControlTransformer` 从正文里剥掉了，
+ * 入参全部来自 metadata 回读（[ttsVoiceBlockCount] / [ttsVoiceInstruct]）。
+ *
+ * @param requiresBlock 这一轮是否要求必须有块（助手开了 TTS 本地工具且注入没被全局关掉，或 system prompt
+ * 里本来就写了这条规范）。为 false 时不校验「有没有 / 空不空」，但「多出来第二个块」照样算违规：
+ * 那种情况下模型是在自说自话地输出标签。
+ * @param blockCount 这条回复累计剥离掉的块数量（含内容为空的块）
+ * @param instruct 这条回复最终生效的语气描述，空块 / 没有块时是空串
+ * @return null 表示通过；非 null 是判否结果，issues / suggestion 会拼进给生成模型的校正指令
+ */
+internal fun checkVoiceControlBlock(
+    requiresBlock: Boolean,
+    blockCount: Int,
+    instruct: String,
+): ReplyReviewResult? {
+    if (blockCount > 1) {
+        return voiceBlockFailure(
+            issue = "出现了 $blockCount 个 <tts_voice_control> 块，只能有 1 个",
+            suggestion = "只保留正文之后那一个块，删掉多余的块；正文里不要提到标签本身",
+        )
+    }
+    if (requiresBlock && blockCount == 0 && instruct.isBlank()) {
+        return voiceBlockFailure(
+            issue = "缺少 <tts_voice_control> 块",
+            suggestion = "在正文之后单独成段补一个 <tts_voice_control>…</tts_voice_control> 块，" +
+                "块内用一段自然语言写清语气、音量、语速、音色、气息、情绪；" +
+                "正文里不要出现括号、旁白或动作描写",
+        )
+    }
+    // 有块但内容全空（例如 `<tts_voice_control>   </tts_voice_control>`）：块的位置对了，语气描述没写
+    if (requiresBlock && blockCount >= 1 && instruct.isBlank()) {
+        return voiceBlockFailure(
+            issue = "<tts_voice_control> 块内没有内容",
+            suggestion = "块内必须写一段具体的语气描述，涵盖语气、音量、语速、音色、气息、情绪六项，不能留空",
+        )
+    }
+    return null
+}
+
+/** 确定性校验的判否结果：0 分、raw 固定标记，方便在日志里和 LLM 审查区分开 */
+private fun voiceBlockFailure(issue: String, suggestion: String) = ReplyReviewResult(
+    passed = false,
+    score = MIN_SCORE,
+    issues = listOf(issue),
+    suggestion = suggestion,
+    raw = "voice-block-check",
+)
 
 /** 审查模型应该输出的 JSON，缺字段时按下面默认值走 */
 @Serializable

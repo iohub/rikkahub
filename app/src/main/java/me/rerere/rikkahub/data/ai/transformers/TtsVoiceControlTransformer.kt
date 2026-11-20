@@ -102,6 +102,41 @@ internal fun UIMessage.ttsVoiceInstruct(): String =
     }.orEmpty()
 
 /**
+ * 这条消息上一共剥离掉多少个 `<tts_voice_control>` 块; 跨 part 求和, Reasoning 里的块也算。
+ *
+ * 块本体已经从正文里删掉了, 审查 (`toText()`) 看不到任何标签, 所以「到底出现了几个块」只能靠 metadata
+ * 里的计数回读。三个钩子各自会跑一遍剥离, 计数在 [stripTtsVoiceControlBlocks] 那层做成累加,
+ * 重复跑不会把同一个块数成两个, 见 [TtsVoiceMetadata.blockCount]。
+ */
+internal fun UIMessage.ttsVoiceBlockCount(): Int =
+    parts.sumOf { part -> part.metadataAs<TtsVoiceMetadata>()?.blockCount ?: 0 }
+
+/**
+ * 一次剥离要写回 metadata 的内容。
+ *
+ * @property instruct 生效的语气描述: 本次剥到的优先, 没有就沿用旧值(不能把上一步写好的语气抹掉)
+ * @property blockCount 累计块数量
+ */
+private data class StrippedMetadata(val instruct: String?, val blockCount: Int?)
+
+/**
+ * 算出这次剥离该写进 metadata 的内容; 返回 null 表示**没有任何新信息**, 调用方应原样返回这个 part。
+ *
+ * 块计数是累加的: 只有本次真的剥到了块才增长。这一点是幂等性的关键 —— `visualTransform` 每次预览重算、
+ * `transform` 落库前、`onGenerationFinish` 流式结束兜底会把同一段文本剥三遍, 后两遍里已经没有块
+ * (`blockCount == 0`), 此时计数必须保持不变, 否则 1 个块会被数成 3 个, 审查永远判否。
+ * 反过来, 多步回复里每个步骤各冒出一个块时, 每次都能累加上去。
+ */
+private fun TtsVoiceMetadata?.withStripped(stripped: StrippedText): StrippedMetadata? {
+    val existingInstruct = this?.instruct
+    val existingCount = this?.blockCount
+    val newInstruct = stripped.instruct ?: existingInstruct
+    val newCount = if (stripped.blockCount > 0) (existingCount ?: 0) + stripped.blockCount else existingCount
+    if (newInstruct == existingInstruct && newCount == existingCount) return null
+    return StrippedMetadata(instruct = newInstruct, blockCount = newCount)
+}
+
+/**
  * 剥离单个 Text part 里的语气控制块。
  *
  * 处理后的空文本**不删除**这个 part: part 下标被上层(工具调用、`transformNewParts` 的切分点)依赖,
@@ -109,16 +144,17 @@ internal fun UIMessage.ttsVoiceInstruct(): String =
  */
 private fun UIMessagePart.Text.stripTtsVoiceControl(): UIMessagePart.Text {
     val stripped = stripTtsVoiceControlBlocks(text)
-    val instruct = stripped.instruct
-    // 没有块: 原样返回, 已有的 metadata(其它 transformer / provider 写的)不能被清掉
-    if (instruct == null) {
-        return if (stripped.text == text) this else copy(text = stripped.text)
-    }
+    // 没有新信息(没有块, 也没有新的空块计数): 原样返回, 已有的 metadata(其它 transformer / provider
+    // 写的)不能被清掉
+    val update = metadataAs<TtsVoiceMetadata>().withStripped(stripped)
+        ?: return if (stripped.text == text) this else copy(text = stripped.text)
     return copy(
         text = stripped.text,
         // 必须合并而不是覆盖: 同一个 part 的 metadata 是多来源共享槽, Google 的 thoughtSignature
         // 之类回传必需的签名不能被语气块顺手抹掉
-        metadata = metadata.mergeWith(TtsVoiceMetadata(instruct = instruct).toMetadata()),
+        metadata = metadata.mergeWith(
+            TtsVoiceMetadata(instruct = update.instruct, blockCount = update.blockCount).toMetadata(),
+        ),
     )
 }
 
@@ -131,15 +167,15 @@ private fun UIMessagePart.Text.stripTtsVoiceControl(): UIMessagePart.Text {
  */
 private fun UIMessagePart.Reasoning.stripTtsVoiceControl(): UIMessagePart.Reasoning {
     val stripped = stripTtsVoiceControlBlocks(reasoning)
-    val instruct = stripped.instruct
-    if (instruct == null) {
-        return if (stripped.text == reasoning) this else copy(reasoning = stripped.text)
-    }
-    // 已经剥离过的 reasoning 里不会再有块, 所以这里不存在覆盖旧 tts_instruct 的情况;
+    // 与 Text 同一套合并规则: 语气沿用旧值、块计数累加, 没有新信息就原样返回
+    val update = metadataAs<TtsVoiceMetadata>().withStripped(stripped)
+        ?: return if (stripped.text == reasoning) this else copy(reasoning = stripped.text)
     // 其余 key(provider 签名等)靠合并保留
     return copy(
         reasoning = stripped.text,
-        metadata = metadata.mergeWith(TtsVoiceMetadata(instruct = instruct).toMetadata()),
+        metadata = metadata.mergeWith(
+            TtsVoiceMetadata(instruct = update.instruct, blockCount = update.blockCount).toMetadata(),
+        ),
     )
 }
 
@@ -154,8 +190,19 @@ private fun JsonObject?.mergeWith(other: JsonObject?): JsonObject? = when {
     else -> JsonObject(this + other)
 }
 
-/** 剥离结果: [text] 是给用户看的正文, [instruct] 是本 part 内最后一个非空语气描述(没有则为 null) */
-private data class StrippedText(val text: String, val instruct: String?)
+/**
+ * 剥离结果。
+ *
+ * @property text 给用户看的正文
+ * @property instruct 本 part 内最后一个非空语气描述(没有则为 null)
+ * @property blockCount 本次匹配到的完整块数量, **包含内容为空的块**: 空块也要算进「出现了几个块」,
+ * 质量审查靠它判断「恰好一个非空块」这条约定
+ */
+private data class StrippedText(
+    val text: String,
+    val instruct: String?,
+    val blockCount: Int,
+)
 
 /**
  * 把文本里的控制块删掉, 同时取出块内的语气描述。
@@ -165,11 +212,12 @@ private data class StrippedText(val text: String, val instruct: String?)
  * 后续步骤的锚定行为发生变化。
  */
 private fun stripTtsVoiceControlBlocks(raw: String): StrippedText {
-    // 1. 完整块: 块内 trim 后为空的不算有效语气(模型偶尔会输出空块), 但块本身照样要从正文里删掉
-    val instructs = TTS_VOICE_BLOCK_REGEX.findAll(raw)
+    // 1. 完整块: 块内 trim 后为空的不算有效语气(模型偶尔会输出空块), 但块本身照样要从正文里删掉。
+    //    计数**不过滤**空块, 所以先留住全部匹配再分别处理, 避免为了计数再把正则跑一遍
+    val blocks = TTS_VOICE_BLOCK_REGEX.findAll(raw).toList()
+    val instructs = blocks
         .map { match -> match.groupValues[1].trim() }
         .filter { instruct -> instruct.isNotEmpty() }
-        .toList()
     var text = TTS_VOICE_BLOCK_REGEX.replace(raw, "")
     // 2. 未闭合块: 流式输出时块还没写完, 从残留的开标签一直切到末尾, 半截语气描述不能显示出来。
     //    取第一个残留开标签: 存在多个时也从最早的那个切起, 否则切完仍会留下一个可见的标签本身
@@ -185,7 +233,7 @@ private fun stripTtsVoiceControlBlocks(raw: String): StrippedText {
     text = text.trimIncompleteOpenTagPrefix()
     // 5. 块通常独占一段, 删掉后会剩两个空行, 压成一个空行
     text = text.replace(TTS_VOICE_BLANK_LINES_REGEX, "\n\n").trimEnd()
-    return StrippedText(text = text, instruct = instructs.lastOrNull())
+    return StrippedText(text = text, instruct = instructs.lastOrNull(), blockCount = blocks.size)
 }
 
 /**
