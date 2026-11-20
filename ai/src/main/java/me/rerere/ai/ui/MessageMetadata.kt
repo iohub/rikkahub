@@ -121,6 +121,22 @@ data class DiffMetadata(
 ) : PartMetadata
 
 /**
+ * 语音语气控制的元数据: 回复正文后的 `<tts_voice_control>` 块的内容。
+ *
+ * 模型在正文之后单独成段输出一个 `<tts_voice_control>...</tts_voice_control>` 块, 里面是一段中文
+ * 自然语言语气描述; 展示层由 `TtsVoiceControlTransformer` 把块从文本里剥离, 并把内容存到这里,
+ * 供本地 TTS 播放链路当作这一轮朗读的动态 instruct。
+ *
+ * 只在本地使用: 不会发给 API(发送前模型看不到它, 也无需看到), 与 [DiffMetadata] 属于同一类元数据。
+ * 字段可空, 这样旧会话里的其它 metadata 解码成这个类型也不会失败。
+ */
+@Serializable
+data class TtsVoiceMetadata(
+    @SerialName("tts_instruct")
+    val instruct: String? = null,
+) : PartMetadata
+
+/**
  * 将 metadata 解析为类型化的 [PartMetadata], 解析失败或 metadata 为 null 时返回 null
  *
  * 由于 json 配置了 ignoreUnknownKeys, 不同 provider 的 metadata 互不干扰

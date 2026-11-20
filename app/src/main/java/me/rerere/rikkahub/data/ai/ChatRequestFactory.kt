@@ -27,6 +27,7 @@ import me.rerere.ai.ui.limitContext
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.ai.prompts.buildMemoryPrompt
 import me.rerere.rikkahub.data.ai.tools.ChatToolFactory
+import me.rerere.rikkahub.data.ai.tools.local.LocalToolOption
 import me.rerere.rikkahub.data.ai.transformers.Base64ImageToLocalFileTransformer
 import me.rerere.rikkahub.data.ai.transformers.DocumentAsPromptTransformer
 import me.rerere.rikkahub.data.ai.transformers.InputMessageTransformer
@@ -38,13 +39,16 @@ import me.rerere.rikkahub.data.ai.transformers.RegexOutputTransformer
 import me.rerere.rikkahub.data.ai.transformers.TemplateTransformer
 import me.rerere.rikkahub.data.ai.transformers.ThinkTagTransformer
 import me.rerere.rikkahub.data.ai.transformers.TimeReminderTransformer
+import me.rerere.rikkahub.data.ai.transformers.TtsVoiceControlTransformer
 import me.rerere.rikkahub.data.ai.transformers.WorkspaceReminderTransformer
 import me.rerere.rikkahub.data.ai.transformers.onGenerationFinish
 import me.rerere.rikkahub.data.ai.transformers.transformThinkTags
+import me.rerere.rikkahub.data.ai.transformers.transformTtsVoiceControl
 import me.rerere.rikkahub.data.ai.transformers.transforms
 import me.rerere.rikkahub.data.ai.transformers.visualTransforms
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.findProvider
+import me.rerere.rikkahub.data.datastore.getSelectedTTSProvider
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.data.model.MemoryFile
@@ -53,6 +57,9 @@ import me.rerere.rikkahub.data.model.getChatModelOf
 import me.rerere.rikkahub.data.repository.MemoryRepository
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
 import me.rerere.rikkahub.data.repository.memoryId
+import me.rerere.tts.provider.TTSManager
+import org.koin.core.component.KoinComponent
+import org.koin.core.component.inject
 import java.net.SocketTimeoutException
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
@@ -97,7 +104,12 @@ class ChatTurnContext(
     val tools: List<Tool>,
 )
 
-/** 把会话变成发给模型的请求：系统提示词、上下文裁剪、输入输出转换都在这里 */
+/**
+ * 把会话变成发给模型的请求：系统提示词、上下文裁剪、输入输出转换都在这里
+ *
+ * 用 [KoinComponent] 只是为了拿 [TTSManager] 读当前 provider 的语气标记引导（`getPromptGuidance` 是实例方法
+ * 且依赖 provider 内部状态，没有伴生入口）。构造签名保持不变 —— 本类由 Koin 用显式参数构造。
+ */
 class ChatRequestFactory(
     private val context: Context,
     private val providerManager: ProviderManager,
@@ -107,7 +119,10 @@ class ChatRequestFactory(
     private val sshProxyTunnelResolver: SshProxyTunnelResolver,
     templateTransformer: TemplateTransformer,
     workspaceRepository: WorkspaceRepository,
-) {
+) : KoinComponent {
+    /** 惰性解析：本类被构造时不触发 Koin 查找，避免单测里未启动 Koin 时直接炸在构造阶段 */
+    private val ttsManager: TTSManager by inject()
+
     private val inputTransformers: List<InputMessageTransformer> = listOf(
         TimeReminderTransformer,
         PromptInjectionTransformer,
@@ -120,6 +135,8 @@ class ChatRequestFactory(
 
     private val outputTransformers: List<OutputMessageTransformer> = listOf(
         ThinkTagTransformer,
+        // 必须排在 ThinkTag 之后：它只 trimEnd，保留正文前导空白，ThinkTag 的 `\A\s*<think>` 才不会失效
+        TtsVoiceControlTransformer,
         Base64ImageToLocalFileTransformer,
         RegexOutputTransformer,
     )
@@ -285,6 +302,26 @@ class ChatRequestFactory(
         return summary.ifBlank { error("Failed to generate compressed summary") }
     }
 
+    /**
+     * 当前选中 TTS provider 自带的语气标记引导（RemoteTTS 的「只吃纯文本、不支持内联情绪标签」、
+     * MiMo 的 `(开心 磁性)` 标记语法等）。
+     *
+     * 语气控制块不再挂在 `text_to_speech` 工具上之后，provider 之间的差异只能在这里补进 system prompt。
+     * 解析失败（Koin 未启动、没有可用 provider）时退化为空串：调用方只注入通用规则，请求照常发出，
+     * 不能因为读不到语气引导就把整轮对话打断。
+     */
+    private fun ttsProviderGuidance(turn: ChatTurnContext): String {
+        return try {
+            turn.settings.getSelectedTTSProvider()
+                ?.let { provider -> ttsManager.getPromptGuidance(provider) }
+                .orEmpty()
+                .trim()
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to resolve tts prompt guidance, injecting rules only", e)
+            ""
+        }
+    }
+
     /** 一步请求实际发出的消息和参数；正常对话和压缩共用，二者的请求前缀必须一致才能命中提示词缓存 */
     private suspend fun buildStep(
         turn: ChatTurnContext,
@@ -332,6 +369,12 @@ class ChatRequestFactory(
                         appendLine()
                         append(tool.systemPrompt(turn.model, messages))
                     }
+                }
+                // TTS 语气控制块：重构后它不是工具提示词，所以不受 isToolPromptsDisabled 门控，
+                // 只看「助手开了 TTS 本地工具」与注入总开关
+                if (LocalToolOption.Tts in assistant.localTools && !override.disableAll) {
+                    appendLine()
+                    append(ttsVoiceControlPrompt(ttsProviderGuidance(turn)))
                 }
             }
             assembledSystem = system
@@ -407,12 +450,14 @@ internal fun List<UIMessage>.withContinuationHint(): List<UIMessage> {
  *
  * 指令要求不调用工具，模型仍可能发起调用。这时附带的文本只是"我先看看文件"之类的说明，
  * 当成摘要保存会让之后的请求丢掉全部历史，所以返回 null 交给调用方报错。
- * 压缩请求不经过输出转换器，正文开头的 <think> 思考内容也要在这里剥掉，否则会存进摘要。
+ * 压缩请求不经过输出转换器，正文开头的 <think> 思考内容与正文之后单独成段的 <tts_voice_control>
+ * 语气块也要在这里剥掉，否则会存进摘要（这两条规则在压缩请求的 system prompt 里同样存在）。
  */
 internal fun UIMessage.compressionSummaryOrNull(): String? {
     if (getTools().isNotEmpty()) return null
     return listOf(this)
         .transformThinkTags(now = Clock.System.now(), generationFinished = true)
+        .transformTtsVoiceControl()
         .single()
         .toText()
         .trim()
