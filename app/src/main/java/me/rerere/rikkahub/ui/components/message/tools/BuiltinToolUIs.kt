@@ -26,12 +26,16 @@ import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -65,6 +69,7 @@ import me.rerere.hugeicons.stroke.ChartColumn
 import me.rerere.hugeicons.stroke.ChartLineData01
 import me.rerere.hugeicons.stroke.ChartScatter
 import me.rerere.hugeicons.stroke.Clipboard
+import me.rerere.hugeicons.stroke.Code
 import me.rerere.hugeicons.stroke.Eraser
 import me.rerere.hugeicons.stroke.GlobalSearch
 import me.rerere.hugeicons.stroke.MagicWand01
@@ -414,6 +419,8 @@ object TextToSpeechToolUI : ToolUIRenderer {
         val text = context.arguments.getStringContent("text") ?: ""
         // 模型为本轮生成的动态语气（情绪/语速/场景）；旧消息没有这个参数，留空则整行不渲染
         val instruct = context.arguments.getStringContent("instruct").orEmpty()
+        // 摘要行的显式日志入口：点标题行也能开详情，但没人猜得到，这里给一个明说的按钮
+        var showRawLog by remember { mutableStateOf(false) }
         Column(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(2.dp),
@@ -442,6 +449,17 @@ object TextToSpeechToolUI : ToolUIRenderer {
                         modifier = Modifier.size(14.dp),
                     )
                 }
+                FilledTonalIconButton(
+                    // 显式入口，点了直接弹原始日志面板，不依赖「点标题行」这个隐藏交互
+                    onClick = { showRawLog = true },
+                    modifier = Modifier.size(28.dp),
+                ) {
+                    Icon(
+                        imageVector = HugeIcons.Code,
+                        contentDescription = stringResource(R.string.tool_raw_log_toggle),
+                        modifier = Modifier.size(14.dp),
+                    )
+                }
             }
             if (instruct.isNotBlank()) {
                 // 前缀本地化标签: 否则中文用户不知道这串英文描述词是"语气"
@@ -454,6 +472,23 @@ object TextToSpeechToolUI : ToolUIRenderer {
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.fillMaxWidth(),
                 )
+            }
+        }
+        // 独立日志面板: 摘要行点按钮直接弹出, 不再依赖「点标题行 → 详情 → 展开原始日志」三步
+        if (showRawLog) {
+            ModalBottomSheet(onDismissRequest = { showRawLog = false }) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxHeight(0.8f)
+                        .padding(16.dp)
+                        .verticalScroll(rememberScrollState()),
+                ) {
+                    ToolRawLogSection(
+                        context = context,
+                        extra = rememberTtsRawLogExtra(context),
+                        initiallyExpanded = true,
+                    )
+                }
             }
         }
     }

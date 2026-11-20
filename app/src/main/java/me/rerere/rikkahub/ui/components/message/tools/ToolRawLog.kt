@@ -62,40 +62,48 @@ private val RAW_LOG_MAX_HEIGHT = 420.dp
  * 静态/动态/合并语气)用 [extra] 并入顶层即可。
  *
  * @param extra 额外并入日志顶层的键值, 为 null 时不加任何键
+ * @param initiallyExpanded 用于「从摘要行直接弹出的独立日志面板」: 打开即展开, 且不渲染那条
+ * 分割线与折叠入口行(此时它本身就是面板内容, 再给一个「查看原始日志」的入口只会自相矛盾);
+ * 默认 false, 保持详情页底部「一行入口 + 点开才展开」的形态
  */
 @Composable
 fun ToolRawLogSection(
     context: ToolUIContext,
     modifier: Modifier = Modifier,
     extra: JsonObject? = null,
+    initiallyExpanded: Boolean = false,
 ) {
-    var expanded by remember { mutableStateOf(false) }
+    // 用 initiallyExpanded 作 key: 同一位置从折叠形态切成独立面板时, 状态要跟着初始值重置
+    var expanded by remember(initiallyExpanded) { mutableStateOf(initiallyExpanded) }
     // tool 是 data class, extra 由调用方 remember, 两者都没变时不必重新拼 JSON
     val rawLog = remember(context.tool, extra) { buildToolRawLogJson(context.tool, extra) }
     val localContext = LocalContext.current
     val copiedHint = stringResource(R.string.tool_raw_log_copied)
 
     Column(modifier = modifier.fillMaxWidth()) {
-        HorizontalDivider()
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { expanded = !expanded }
-                .padding(vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Icon(
-                imageVector = if (expanded) HugeIcons.ArrowDown01 else HugeIcons.ArrowRight01,
-                contentDescription = null,
-                modifier = Modifier.size(16.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                text = stringResource(R.string.tool_raw_log_toggle),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        // 独立面板形态下日志已经摊开, 折叠入口本身没有意义, 干脆不渲染
+        if (!initiallyExpanded) {
+            HorizontalDivider()
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded }
+                    .padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Icon(
+                    imageVector = if (expanded) HugeIcons.ArrowDown01 else HugeIcons.ArrowRight01,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = stringResource(R.string.tool_raw_log_toggle),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
         AnimatedVisibility(visible = expanded) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
