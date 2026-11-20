@@ -1,5 +1,8 @@
 package me.rerere.tts.model
 
+import me.rerere.tts.provider.TTSProviderSetting
+import me.rerere.tts.provider.providers.STEP_INSTRUCTION_MAX_LENGTH
+
 /** 静态指令与动态指令之间的连接符：分号 + 空格，读起来像一句连贯的风格描述 */
 private const val INSTRUCTION_JOINER = "; "
 
@@ -59,4 +62,31 @@ internal fun mergeTtsInstructions(
             if (keptStatic.isEmpty()) dynamicPart else keptStatic + INSTRUCTION_JOINER + dynamicPart
         }
     }
+}
+
+/**
+ * 预览「实际会下发给 provider 的 instruct」：把设置页里配置的静态指令与本轮的动态 instruct
+ * 按该 provider 自己的规则合并。
+ *
+ * 与真实请求体走的是同一个 [mergeTtsInstructions]，所以 UI 上显示的就是真正发出去的值，
+ * 调试「为什么这一轮语气是这样」时不用再猜。
+ *
+ * 各 provider 的规则差异（合并函数只把这些差异集中在一处，避免 UI 和请求各写一份）：
+ * - [TTSProviderSetting.RemoteTTS]：静态 [TTSProviderSetting.RemoteTTS.instructions] + 动态，
+ *   无长度上限（见 `buildRemoteSpeechRequest`）；
+ * - [TTSProviderSetting.Step]：静态 [TTSProviderSetting.Step.instruction] + 动态，
+ *   受服务端 ≤[STEP_INSTRUCTION_MAX_LENGTH] 字符约束，超出时**优先完整保留动态**、只砍静态尾部
+ *   （见 `buildStepSpeechRequest`）。
+ *
+ * 返回值可能为空串：表示这次请求不会下发该字段（请求体里连键都不写）。调用方想区分
+ * 「不消费 instruct」与「合并后为空」时，请先判 null 再判 isBlank。
+ *
+ * @param dynamicInstruct 本轮模型为这一次朗读生成的动态语气，为空表示不叠加额外语气
+ * @return null 表示该 provider 不消费 instruct（本仓库其余 provider 均是）
+ */
+fun TTSProviderSetting.mergedInstructionsFor(dynamicInstruct: String): String? = when (this) {
+    is TTSProviderSetting.RemoteTTS -> mergeTtsInstructions(instructions, dynamicInstruct)
+    is TTSProviderSetting.Step ->
+        mergeTtsInstructions(instruction, dynamicInstruct, STEP_INSTRUCTION_MAX_LENGTH)
+    else -> null
 }
