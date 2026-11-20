@@ -5,6 +5,7 @@ import kotlinx.coroutines.runBlocking
 import me.rerere.tts.cache.TtsAudioCache
 import me.rerere.tts.model.AudioChunk
 import me.rerere.tts.model.AudioFormat
+import me.rerere.tts.model.TTSRequest
 import me.rerere.tts.provider.TTSProviderSetting
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
@@ -108,6 +109,31 @@ class TtsSynthesizerTest {
         synthesizer.synthesize(setting, TtsChunk(index = 1, text = "第二片"))
 
         assertEquals(listOf("第一片", "第二片"), requests)
+    }
+
+    @Test
+    fun `dynamic instruct is forwarded to the provider and cached separately`() = runBlocking {
+        val requests = mutableListOf<TTSRequest>()
+        val synthesizer = TtsSynthesizer { _, request ->
+            requests += request
+            audioFlow(newAudio)
+        }
+        val chunk = chunk("hello")
+
+        // 第一次：请求里必须带上动态语气
+        synthesizer.synthesize(setting, chunk, instruct = "excited")
+        assertEquals(listOf("excited"), requests.map { it.instruct })
+
+        // 同文本同语气：命中磁盘缓存，不再请求
+        synthesizer.synthesize(setting, chunk, instruct = "excited")
+        assertEquals(1, requests.size)
+
+        // 同文本换语气：缓存键不同，必须重新请求（否则会播到上一次语气的音频）
+        synthesizer.synthesize(setting, chunk, instruct = "sad")
+        assertEquals(listOf("excited", "sad"), requests.map { it.instruct })
+
+        // 两种语气各自落一份缓存文件
+        assertEquals(2, TtsAudioCache.stats(setting.id.toString()).first)
     }
 
     private fun chunk(text: String) = TtsChunk(index = 0, text = text)

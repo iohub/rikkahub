@@ -161,6 +161,37 @@ class TtsAudioCacheTest {
     }
 
     @Test
+    fun `buildKey includes the dynamic instruct but keeps the legacy key when it is blank`() {
+        val base = TTSProviderSetting.RemoteTTS(id = kotlin.uuid.Uuid.random(), instructions = "warm")
+
+        // 不传 instruct 时与加入该参数之前算出来的 key 完全一致（旧缓存文件仍然命中）
+        assertEquals(
+            TtsAudioCache.buildKey(base, "hello"),
+            TtsAudioCache.buildKey(base, "hello", instruct = ""),
+        )
+        // 纯空白等于"没指定"，与合并下发时的 trim 规则一致
+        assertEquals(
+            TtsAudioCache.buildKey(base, "hello"),
+            TtsAudioCache.buildKey(base, "hello", instruct = "   "),
+        )
+
+        // 同一段文本换语气必须落成不同 key，否则会播到上一次语气的音频
+        assertNotEquals(
+            TtsAudioCache.buildKey(base, "hello"),
+            TtsAudioCache.buildKey(base, "hello", instruct = "excited"),
+        )
+        assertNotEquals(
+            TtsAudioCache.buildKey(base, "hello", instruct = "excited"),
+            TtsAudioCache.buildKey(base, "hello", instruct = "sad"),
+        )
+        // 只差首尾空白不算换语气
+        assertEquals(
+            TtsAudioCache.buildKey(base, "hello", instruct = "excited"),
+            TtsAudioCache.buildKey(base, "hello", instruct = "  excited  "),
+        )
+    }
+
+    @Test
     fun `stats and clear count cache entries`() {
         assertEquals(0 to 0L, TtsAudioCache.stats(providerId))
 

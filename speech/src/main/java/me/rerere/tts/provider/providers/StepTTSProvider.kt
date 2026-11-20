@@ -4,11 +4,13 @@ import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import me.rerere.tts.model.AudioChunk
 import me.rerere.tts.model.AudioFormat
 import me.rerere.tts.model.TTSRequest
+import me.rerere.tts.model.mergeTtsInstructions
 import me.rerere.tts.provider.TTSProvider
 import me.rerere.tts.provider.TTSProviderException
 import me.rerere.tts.provider.TTSProviderSetting
@@ -50,20 +52,12 @@ class StepTTSProvider : TTSProvider<TTSProviderSetting.Step> {
     ): Flow<AudioChunk> = flow {
         // 只在 instruction 非空时下发; step-tts-mini / step-tts-vivid 不支持该字段,
         // 但服务端会忽略未知字段 (responseFormat 也允许 ignoreUnknownKeys)
-        val requestBody = buildJsonObject {
-            put("model", providerSetting.model)
-            put("input", request.text)
-            put("voice", providerSetting.voice)
-            put("responseFormat", providerSetting.responseFormat)
-            put("speed", providerSetting.speed)
-            put("volume", providerSetting.volume)
-            put("sampleRate", providerSetting.sampleRate)
-            if (providerSetting.instruction.isNotBlank()) {
-                put("instruction", providerSetting.instruction)
-            }
-        }
+        val requestBody = buildStepSpeechRequest(providerSetting, request.text, request.instruct)
 
-        Log.i(TAG, "generateSpeech: model=${providerSetting.model} voice=${providerSetting.voice} format=${providerSetting.responseFormat}")
+        Log.i(
+            TAG,
+            "generateSpeech: model=${providerSetting.model} voice=${providerSetting.voice} format=${providerSetting.responseFormat}"
+        )
 
         val httpRequest = Request.Builder()
             .url("${providerSetting.baseUrl.trimEnd('/')}/v1/audio/speech")
@@ -116,4 +110,36 @@ class StepTTSProvider : TTSProvider<TTSProviderSetting.Step> {
             )
         )
     }
+}
+
+/**
+ * StepFun `instruction` 字段的服务端上限（≤200 字符）。
+ * 设置页输入框与这里的截断共用同一个上限，避免「UI 能输进去、请求却被截」的不一致。
+ */
+internal const val STEP_INSTRUCTION_MAX_LENGTH = 200
+
+/**
+ * 构建 `POST {baseUrl}/v1/audio/speech` 的 JSON 请求体（纯函数，便于单测且不发网络）。
+ *
+ * 字段命名遵循阶跃官方 SDK 的 camelCase 约定；`instruction` 由设置页的静态
+ * [TTSProviderSetting.Step.instruction] 与本次动态 [instruct] 合并而来（静态在前），
+ * 合并结果超过 [STEP_INSTRUCTION_MAX_LENGTH] 时从尾部截断，合并后仍为空白则整键不下发。
+ *
+ * @param instruct 这一次朗读的动态语气指令，为空表示不叠加额外语气
+ */
+internal fun buildStepSpeechRequest(
+    setting: TTSProviderSetting.Step,
+    input: String,
+    instruct: String = "",
+): JsonObject = buildJsonObject {
+    put("model", setting.model)
+    put("input", input)
+    put("voice", setting.voice)
+    put("responseFormat", setting.responseFormat)
+    put("speed", setting.speed)
+    put("volume", setting.volume)
+    put("sampleRate", setting.sampleRate)
+    mergeTtsInstructions(setting.instruction, instruct, maxLength = STEP_INSTRUCTION_MAX_LENGTH)
+        .takeIf { it.isNotBlank() }
+        ?.let { put("instruction", it) }
 }

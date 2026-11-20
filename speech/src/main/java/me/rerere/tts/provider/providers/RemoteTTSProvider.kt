@@ -12,6 +12,7 @@ import kotlinx.serialization.json.put
 import me.rerere.tts.model.AudioChunk
 import me.rerere.tts.model.AudioFormat
 import me.rerere.tts.model.TTSRequest
+import me.rerere.tts.model.mergeTtsInstructions
 import me.rerere.tts.provider.TTSProvider
 import me.rerere.tts.provider.TTSProviderException
 import me.rerere.tts.provider.TTSProviderSetting
@@ -29,8 +30,8 @@ private val JSON_MEDIA_TYPE = "application/json".toMediaType()
  *
  * [POST {baseUrl}/audio/speech], baseUrl 约定已包含 `/v1`; apiKey 为空时不发 Authorization 头。
  * 请求体由 [buildRemoteSpeechRequest] 构建: `input` 与 `response_format` 恒发,
- * `model` / `voice` / `language` / `instructions` 非空才发, 9 个采样参数非 null 才发
- * (null = 保留服务端引擎默认值)。
+ * `model` / `voice` / `language` 非空才发, `instructions` 为「静态配置 + 本次动态语气」的
+ * 合并结果 (仍为空白则不发), 9 个采样参数非 null 才发 (null = 保留服务端引擎默认值)。
  *
  * 音频内容一次性读完整响应体后作为单个 [AudioChunk] 发出:
  * - response_format = "wav" (或其它非 pcm 格式): 服务端返回完整音频文件, 原样交给播放器;
@@ -49,21 +50,22 @@ class RemoteTTSProvider : TTSProvider<TTSProviderSetting.RemoteTTS> {
 
     override val promptGuidance: String
         get() = "This TTS service synthesizes speech from plain text and can use a specific cloned " +
-                "voice and an explicit language; no inline emotion tags are supported."
+            "voice and an explicit language; no inline emotion tags are supported."
 
     override fun generateSpeech(
         context: Context,
         providerSetting: TTSProviderSetting.RemoteTTS,
         request: TTSRequest
     ): Flow<AudioChunk> = flow {
-        val requestBody = buildRemoteSpeechRequest(providerSetting, request.text)
+        val requestBody = buildRemoteSpeechRequest(providerSetting, request.text, request.instruct)
 
         Log.i(
             TAG,
             "generateSpeech: model=${providerSetting.model} voice=${providerSetting.voice} " +
-                    "language=${providerSetting.language} format=${providerSetting.responseFormat} " +
-                    "instructions=${providerSetting.instructions.isNotBlank()} " +
-                    "length=${request.text.length}"
+                "language=${providerSetting.language} format=${providerSetting.responseFormat} " +
+                "instructions=${providerSetting.instructions.isNotBlank()} " +
+                "dynamicInstruct=${request.instruct.isNotBlank()} " +
+                "length=${request.text.length}"
         )
 
         val requestBuilder = Request.Builder()
@@ -133,13 +135,18 @@ class RemoteTTSProvider : TTSProvider<TTSProviderSetting.RemoteTTS> {
  *
  * 下发规则严格对齐服务端文档:
  * - `input` 与 `response_format` 恒发 (`response_format` 为空时回落到 "wav");
- * - `model` / `voice` / `language` / `instructions` 非空才发;
+ * - `model` / `voice` / `language` 非空才发;
+ * - `instructions` = 设置页的静态 [TTSProviderSetting.RemoteTTS.instructions] 与本次动态
+ *   [instruct] 的合并结果 (静态在前), 合并后仍为空白则整键不下发 (见 [mergeTtsInstructions]);
  * - 9 个采样参数非 null 才发, key 全部 snake_case; null 表示保留引擎默认值。
  *   注意: 旧版本用 `seed = -1` 表示"不下发", 迁移后应改用 `seed = null`。
+ *
+ * @param instruct 这一次朗读的动态语气指令, 为空表示不叠加额外语气
  */
 internal fun buildRemoteSpeechRequest(
     setting: TTSProviderSetting.RemoteTTS,
     input: String,
+    instruct: String = "",
 ): JsonObject = buildJsonObject {
     put("input", input)
     // 服务端需要 response_format 决定返回完整 wav 还是 pcm 裸流, 因此恒发
@@ -148,7 +155,10 @@ internal fun buildRemoteSpeechRequest(
     setting.model.takeIf { it.isNotBlank() }?.let { put("model", it) }
     setting.voice.takeIf { it.isNotBlank() }?.let { put("voice", it) }
     setting.language.takeIf { it.isNotBlank() }?.let { put("language", it) }
-    setting.instructions.takeIf { it.isNotBlank() }?.let { put("instructions", it) }
+    // 静态配置 (设置页) + 动态语气 (模型这一次传入) 合并后下发; 合并结果仍为空白就不下发该键
+    mergeTtsInstructions(setting.instructions, instruct)
+        .takeIf { it.isNotBlank() }
+        ?.let { put("instructions", it) }
 
     setting.seed?.let { put("seed", it) }
     setting.maxNewTokens?.let { put("max_new_tokens", it) }

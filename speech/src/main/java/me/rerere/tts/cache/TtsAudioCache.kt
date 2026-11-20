@@ -137,12 +137,21 @@ object TtsAudioCache {
     }
 
     /**
-     * 缓存键：把影响音频产出的所有设置字段 + 文本拼成规范串再取 sha256。
+     * 缓存键：把影响音频产出的所有设置字段 + 文本 + 动态语气拼成规范串再取 sha256。
      *
      * 不含 apiKey（换 key 不影响音频内容）、name（改个显示名不该让缓存全失效）、
      * cacheEnabled / cacheMaxMb（纯缓存开关，与音频内容无关）。
+     *
+     * @param instruct 这一次朗读的动态语气指令。必须参与 key：同一段文本用不同语气合成出的音频
+     *   完全不同，混用会让用户听到上一次语气的旧音频。它排在静态 [TTSProviderSetting.RemoteTTS.instructions]
+     *   之后，按 trim 后的值参与（与请求体合并时的 trim 保持一致）；空 / 空白等同于「没指定」，
+     *   此时算出的 key 与加入该参数之前完全一样，旧缓存文件仍然命中。
      */
-    fun buildKey(setting: TTSProviderSetting.RemoteTTS, text: String): String {
+    fun buildKey(
+        setting: TTSProviderSetting.RemoteTTS,
+        text: String,
+        instruct: String = "",
+    ): String {
         val canonical = listOf(
             setting.id.toString(),
             setting.baseUrl,
@@ -150,6 +159,7 @@ object TtsAudioCache {
             setting.voice,
             setting.language,
             setting.instructions,
+            instruct.trim(),
             setting.responseFormat,
             setting.sampleRate.toString(),
             setting.seed?.toString() ?: "-",

@@ -22,6 +22,7 @@ import kotlinx.coroutines.withContext
 import me.rerere.tts.cache.TtsFixedAudioStore
 import me.rerere.tts.model.PlaybackState
 import me.rerere.tts.model.PlaybackStatus
+import me.rerere.tts.model.TTSRequest
 import me.rerere.tts.model.TTSResponse
 import me.rerere.tts.provider.TTSManager
 import me.rerere.tts.provider.TTSProviderException
@@ -63,6 +64,18 @@ class TtsController(
     private var currentMessageId: String? = null
 
     /**
+     * 当前播放链路使用的动态语气指令（模型每次朗读临时给的语气，见 [TTSRequest.instruct]）。
+     *
+     * 只服务「播放链」：`speak` 写入，worker 在合成每一片时读取并透传给
+     * [TtsSynthesizer.synthesize]。`prefetch` / `synthesizeAll` 各自接收独立的 instruct 参数，
+     * 不写这个字段，因此后台预取或固化不会把正在播放的语气改掉。
+     *
+     * 用 @Volatile 是因为写入发生在调用方线程（一般是主线程），读取发生在 worker 的 IO 协程里。
+     */
+    @Volatile
+    private var currentInstruct: String = ""
+
+    /**
      * 播放代次：每次开始新一轮播放 / 重置 / 停止都自增。
      *
      * 取消 worker 是异步的——被取消的协程的 `finally` 会在之后才执行。用代次判断「我是否还是当前这次播放」，
@@ -77,7 +90,16 @@ class TtsController(
     // 队列与缓存（基于稳定 ID）
     private val queue: java.util.concurrent.ConcurrentLinkedQueue<TtsChunk> = java.util.concurrent.ConcurrentLinkedQueue()
     private val allChunks: MutableList<TtsChunk> = mutableListOf()
-    private val cache = java.util.concurrent.ConcurrentHashMap<UUID, kotlinx.coroutines.Deferred<TTSResponse>>()
+
+    /**
+     * 进程内合成缓存：同一片只请求一次，播放与预取共用同一份 [Deferred]。
+     *
+     * key 是「分片 id + 这一片合成时用的动态语气」而不是裸 [TtsChunk.id]：分片 id 只保证同一次
+     * [speak] 内唯一，一旦播放过程中语气被换掉（追加朗读时传入新的 instruct），同一片就可能在
+     * 两种语气下各合成一次，裸 id 会让第二种语气直接复用第一种语气的音频。
+     */
+    private val cache =
+        java.util.concurrent.ConcurrentHashMap<SynthesisKey, kotlinx.coroutines.Deferred<TTSResponse>>()
 
     // 行为参数
     private val chunkDelayMs = 120L
@@ -140,8 +162,18 @@ class TtsController(
      *
      * @param messageId 这段文本归属的聊天消息 id，仅用于给 [PlaybackState.messageId] 打标；
      *   与具体消息无关的场合（设置页试听、语音模式）留空即可
+     * @param instruct 这一次朗读的动态语气指令（如「兴奋一点」）。provider 会把它与设置页配置的
+     *   静态 instructions 合并后下发，并让它参与缓存键，避免同一文本换语气时播到旧音频。
+     *   - `flush = true`：一律采用本次传入的值（默认空串 = 不带额外语气，顺带清掉上一轮的）；
+     *   - `flush = false`：传空串则沿用当前播放链路的语气（流式追加不该意外把语气冲掉），
+     *     传非空则从这一片起换成新语气（已合成分片不受影响，因为进程内缓存按分片 id + 语气区分）。
      */
-    fun speak(text: String, flush: Boolean = true, messageId: String? = null) {
+    fun speak(
+        text: String,
+        flush: Boolean = true,
+        messageId: String? = null,
+        instruct: String = "",
+    ) {
         if (text.isBlank()) return
         val provider = currentProvider
         if (provider == null) {
@@ -154,10 +186,13 @@ class TtsController(
 
         if (flush) {
             internalReset()
+            // internalReset() 会清空语气，这里在它之后写入本次的值
+            currentInstruct = instruct
             allChunks.addAll(newChunks)
             queue.addAll(newChunks)
             _currentChunk.update { 0 }
         } else {
+            if (instruct.isNotBlank()) currentInstruct = instruct
             // 追加时，重映射 index 以保持全局顺序
             val startIndex = (allChunks.lastOrNull()?.index ?: -1) + 1
             val remapped = newChunks.mapIndexed { i, c -> c.copy(index = startIndex + i) }
@@ -188,8 +223,12 @@ class TtsController(
      * 只碰 [chunker] 与 [synthesizer]：不写队列、不写进程内合成缓存、不动播放状态机，也不进 [audio]。
      * 仅当当前 provider 为 RemoteTTS 且其 cacheEnabled 打开时才有意义，其它情况直接跳过
      * （此时 [TtsSynthesizer.synthesize] 仍会请求服务端，只是不落盘，白耗流量）。
+     *
+     * @param instruct 这一次预生成用的动态语气指令。必须是独立参数：写进 [currentInstruct] 会把
+     *   正在播放的链路语气改掉，导致「预取的声音和播放的语气不一致」。
+     *   要与后续播放命中同一份缓存（同一 key），两边的 instruct 必须一致。
      */
-    fun prefetch(text: String) {
+    fun prefetch(text: String, instruct: String = "") {
         if (text.isBlank()) return
         val provider = currentProvider
         if (provider !is TTSProviderSetting.RemoteTTS || !provider.cacheEnabled) return
@@ -201,7 +240,7 @@ class TtsController(
                 // 预生成是纯后台任务，被取消时立刻退出，不要继续请求剩余分片
                 ensureActive()
                 try {
-                    synthesizer.synthesize(provider, chunk)
+                    synthesizer.synthesize(provider, chunk, instruct = instruct)
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -235,9 +274,16 @@ class TtsController(
      *
      * @param bypassCache true = 重新生成：跳过 `TtsAudioCache` 直接请求服务端，
      *   成功后覆盖缓存（详见 [TtsSynthesizer.synthesize]）
+     * @param instruct 这一次固化用的动态语气指令，独立传参、不读也不写 [currentInstruct]：
+     *   固化是离线动作，不该影响正在进行的播放链路。要与播放时听到的音频一致（命中同一份缓存），
+     *   两次调用的 instruct 必须相同。
      * @return 全部分片；任一分片最终失败则返回空列表（不留半套固化音频）并在 [_error] 写原因
      */
-    suspend fun synthesizeAll(text: String, bypassCache: Boolean = false): List<TTSResponse> =
+    suspend fun synthesizeAll(
+        text: String,
+        bypassCache: Boolean = false,
+        instruct: String = "",
+    ): List<TTSResponse> =
         withContext(Dispatchers.IO) {
             if (text.isBlank()) return@withContext emptyList()
             val provider = currentProvider
@@ -252,7 +298,7 @@ class TtsController(
             for (chunk in chunks) {
                 try {
                     // 串行合成：失败沿用播放链路的重试策略（指数退避，最多 3 次）
-                    responses += synthesizeWithRetry(provider, chunk, bypassCache)
+                    responses += synthesizeWithRetry(provider, chunk, bypassCache, instruct)
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -383,6 +429,8 @@ class TtsController(
         _totalChunks.update { 0 }
         _error.update { null }
         currentMessageId = null
+        // 播放链路结束，语气随会话一起清掉，避免下一轮 speak 漏传 instruct 时沿用上一次的语气
+        currentInstruct = ""
         playbackGeneration++
         _playbackState.update { PlaybackState(status = PlaybackStatus.Idle) }
     }
@@ -433,6 +481,8 @@ class TtsController(
         _currentChunk.update { 0 }
         _totalChunks.update { 0 }
         currentMessageId = null
+        // stop 之后这一轮会话彻底结束，语气不再沿用
+        currentInstruct = ""
         playbackGeneration++
         _playbackState.update { PlaybackState(status = PlaybackStatus.Idle) }
     }
@@ -476,11 +526,15 @@ class TtsController(
                         )
                     }
 
+                    // 每片合成前重新读一次语气：追加朗读（flush=false）换语气后，
+                    // 尚未合成的分片要按新语气生成
+                    val instruct = currentInstruct
+
                     // 仅预取当前分片后的固定窗口
-                    prefetchNextChunks(chunk.index)
+                    prefetchNextChunks(chunk.index, instruct)
 
                     val response = try {
-                        awaitOrCreate(chunk, provider)
+                        awaitOrCreate(chunk, provider, instruct)
                     } catch (e: Exception) {
                         if (e is CancellationException) throw e
                         Log.e(TAG, "Synthesis error", e)
@@ -514,7 +568,7 @@ class TtsController(
         }
     }
 
-    private fun prefetchNextChunks(currentIndex: Int) {
+    private fun prefetchNextChunks(currentIndex: Int, instruct: String) {
         val provider = currentProvider ?: return
         val begin = currentIndex + 1
         val endExclusive = (begin + prefetchCount).coerceAtMost(allChunks.size)
@@ -522,28 +576,36 @@ class TtsController(
 
         for (i in begin until endExclusive) {
             val chunk = allChunks.getOrNull(i) ?: continue
-            getOrCreateSynthesis(chunk, provider)
+            getOrCreateSynthesis(chunk, provider, instruct)
         }
     }
 
-    private suspend fun awaitOrCreate(chunk: TtsChunk, provider: TTSProviderSetting): TTSResponse {
-        val deferred = getOrCreateSynthesis(chunk, provider)
+    private suspend fun awaitOrCreate(
+        chunk: TtsChunk,
+        provider: TTSProviderSetting,
+        instruct: String,
+    ): TTSResponse {
+        val key = SynthesisKey(chunk.id, instruct.trim())
+        val deferred = getOrCreateSynthesis(chunk, provider, instruct)
         return try {
             deferred.await()
         } catch (e: Exception) {
             // 避免后续复用已经失败或取消的 Deferred
-            cache.remove(chunk.id, deferred)
+            cache.remove(key, deferred)
             throw e
         }
     }
 
     private fun getOrCreateSynthesis(
         chunk: TtsChunk,
-        provider: TTSProviderSetting
+        provider: TTSProviderSetting,
+        instruct: String,
     ): kotlinx.coroutines.Deferred<TTSResponse> {
-        return cache.computeIfAbsent(chunk.id) {
+        // 语气（trim 后）进 key：同一片在不同语气下必须各自合成，不能复用旧音频
+        val key = SynthesisKey(chunk.id, instruct.trim())
+        return cache.computeIfAbsent(key) {
             scope.async(Dispatchers.IO) {
-                synthesizeWithRetry(provider, chunk)
+                synthesizeWithRetry(provider, chunk, instruct = instruct)
             }
         }
     }
@@ -552,11 +614,12 @@ class TtsController(
         provider: TTSProviderSetting,
         chunk: TtsChunk,
         bypassCache: Boolean = false,
+        instruct: String = "",
     ): TTSResponse {
         var attempt = 1
         while (true) {
             try {
-                return synthesizer.synthesize(provider, chunk, bypassCache)
+                return synthesizer.synthesize(provider, chunk, bypassCache, instruct)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -580,3 +643,16 @@ class TtsController(
 private fun Exception.isRetryableSynthesisError(): Boolean {
     return this is IOException || this is TTSProviderException && isRetryable
 }
+
+/**
+ * 进程内合成缓存的键：分片 id + 这一次合成使用的动态语气（trim 后）。
+ *
+ * 只用 [TtsChunk.id] 不够：分片 id 的粒度是「这一次 [TtsController.speak] 分出来的片」，
+ * 而语气可以在播放过程中被换掉（追加朗读时传入新的 instruct）。把语气并入 key 之后，
+ * 同一段文本在两种语气下各合成一次，绝不会把 A 语气的音频当成 B 语气的来播。
+ * trim 与 [me.rerere.tts.cache.TtsAudioCache.buildKey] 保持一致，空白 == 没指定。
+ */
+private data class SynthesisKey(
+    val chunkId: UUID,
+    val instruct: String,
+)

@@ -143,4 +143,34 @@ class RemoteTTSProviderTest {
         assertEquals(setOf("input", "response_format", "model"), body.keys)
         assertTrue(body["input"]!!.jsonPrimitive.content.isNotBlank())
     }
+
+    @Test
+    fun dynamic_instruct_is_merged_after_the_static_instructions() {
+        val setting = TTSProviderSetting.RemoteTTS(model = "", instructions = "warm")
+
+        val body = buildRemoteSpeechRequest(setting, "hi", instruct = "excited")
+
+        // 静态基调在前、本次语气在后, 用 "; " 连接后一次下发
+        assertEquals("warm; excited", body["instructions"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun dynamic_instruct_is_sent_alone_when_the_static_instruction_is_blank() {
+        val setting = TTSProviderSetting.RemoteTTS(model = "", instructions = "   ")
+
+        val body = buildRemoteSpeechRequest(setting, "hi", instruct = "低声细语")
+
+        assertEquals("低声细语", body["instructions"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun instructions_key_is_omitted_when_both_static_and_dynamic_are_blank() {
+        // 保持 "空白不下发" 的老语义: 静态与动态都空白时请求体里不能出现 instructions
+        val setting = TTSProviderSetting.RemoteTTS(model = "", instructions = "  ")
+
+        val body = buildRemoteSpeechRequest(setting, "hi", instruct = " ")
+
+        assertFalse(body.containsKey("instructions"))
+        assertEquals(setOf("input", "response_format"), body.keys)
+    }
 }

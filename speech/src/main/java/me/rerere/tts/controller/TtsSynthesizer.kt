@@ -31,22 +31,25 @@ class TtsSynthesizer internal constructor(
      * @param bypassCache true = 用户要求「重新生成」：跳过 [TtsAudioCache] 的读取，强制请求服务端；
      *   成功后再把结果写回缓存，于是随后的普通播放 / 预取能直接命中这份新音频。
      *   只对 `RemoteTTS` 且 `cacheEnabled` 的 provider 有意义，其它 provider 本来就不落盘。
+     * @param instruct 这一次朗读的动态语气指令（与 provider 配置里的静态 instructions 合并后下发）。
+     *   它会同时进入缓存键：同一段文本换语气必须算作不同的缓存条目，否则会播到旧语气的音频。
      */
     suspend fun synthesize(
         setting: TTSProviderSetting,
         chunk: TtsChunk,
         bypassCache: Boolean = false,
+        instruct: String = "",
     ): TTSResponse = withContext(Dispatchers.IO) {
-        // 只有远程 TTS 有磁盘缓存（文本 + provider 配置即可定位），其它 provider 保持原样
+        // 只有远程 TTS 有磁盘缓存（文本 + provider 配置 + 动态语气即可定位），其它 provider 保持原样
         val remote = setting as? TTSProviderSetting.RemoteTTS
         if (remote != null && remote.cacheEnabled) {
             val providerId = remote.id.toString()
-            val key = TtsAudioCache.buildKey(remote, chunk.text)
+            val key = TtsAudioCache.buildKey(remote, chunk.text, instruct)
             if (!bypassCache) {
                 TtsAudioCache.get(providerId, key)?.let { return@withContext it }
             }
             val response = collectToResponse(
-                generate(setting, TTSRequest(text = chunk.text))
+                generate(setting, TTSRequest(text = chunk.text, instruct = instruct))
             )
             TtsAudioCache.put(
                 providerId = providerId,
@@ -57,7 +60,7 @@ class TtsSynthesizer internal constructor(
             return@withContext response
         }
         collectToResponse(
-            generate(setting, TTSRequest(text = chunk.text))
+            generate(setting, TTSRequest(text = chunk.text, instruct = instruct))
         )
     }
 
