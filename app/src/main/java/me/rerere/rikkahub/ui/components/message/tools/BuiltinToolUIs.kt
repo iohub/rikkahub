@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -14,14 +15,19 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -84,6 +90,7 @@ import me.rerere.rikkahub.utils.JsonInstantPretty
 import me.rerere.rikkahub.utils.jsonPrimitiveOrNull
 import me.rerere.rikkahub.utils.openUrl
 import me.rerere.rikkahub.utils.toLocalString
+import me.rerere.ui.components.FormItem
 import org.koin.compose.koinInject
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -380,14 +387,103 @@ object TextToSpeechToolUI : ToolUIRenderer {
                 }
             }
             if (instruct.isNotBlank()) {
+                // 前缀本地化标签: 否则中文用户不知道这串英文描述词是"语气"
                 Text(
-                    text = if (instruct.length > 40) instruct.take(40) + "…" else instruct,
+                    text = stringResource(R.string.tool_ui_tts_instruct_label) + " · " +
+                        (if (instruct.length > 40) instruct.take(40) + "…" else instruct),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.fillMaxWidth(),
                 )
+            }
+        }
+    }
+
+    /**
+     * 详情页: 只展示朗读文本与语气, 不把工具入参/输出的原始 JSON 暴露给用户
+     */
+    @Composable
+    override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
+        val eventBus: AppEventBus = koinInject()
+        val scope = rememberCoroutineScope()
+        val text = context.arguments.getStringContent("text").orEmpty()
+        // 旧消息没有 instruct 参数, 留空时提示"未指定"而不是留白
+        val instruct = context.arguments.getStringContent("instruct").orEmpty()
+        val displayText = if (text.isBlank()) {
+            stringResource(R.string.tool_ui_tts_text_empty)
+        } else {
+            text
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxHeight(0.8f)
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.tool_ui_tts_preview_title),
+                style = MaterialTheme.typography.headlineSmall,
+            )
+            FormItem(
+                label = { Text(stringResource(R.string.tool_ui_tts_text_label)) },
+            ) {
+                SelectionContainer {
+                    Text(
+                        text = displayText,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (text.isBlank()) {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                    )
+                }
+            }
+            FormItem(
+                label = { Text(stringResource(R.string.tool_ui_tts_instruct_label)) },
+            ) {
+                Text(
+                    text = if (instruct.isBlank()) {
+                        stringResource(R.string.tool_ui_tts_instruct_empty)
+                    } else {
+                        instruct
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (instruct.isBlank()) {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    } else {
+                        MaterialTheme.colorScheme.onSurface
+                    },
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                FilledTonalButton(
+                    // 重播沿用同一条动态语气, 与 Summary 内的按钮行为保持一致
+                    onClick = {
+                        scope.launch { eventBus.emit(AppEvent.Speak(text, instruct)) }
+                        onDismissRequest()
+                    },
+                    enabled = text.isNotBlank(),
+                ) {
+                    Icon(
+                        imageVector = HugeIcons.Refresh01,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp),
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(stringResource(R.string.tool_ui_replay))
+                }
+                TextButton(onClick = onDismissRequest) {
+                    Text(stringResource(R.string.tool_ui_tts_close))
+                }
             }
         }
     }
