@@ -287,7 +287,8 @@ class RouteActivity : ComponentActivity() {
         LaunchedEffect(tts) {
             eventBus.events.collect { event ->
                 when (event) {
-                    is AppEvent.Speak -> tts.speak(event.text)
+                    // instruct 是模型本轮生成的动态语气，透传给 controller 与静态 instructions 合并
+                    is AppEvent.Speak -> tts.speak(event.text, instruct = event.instruct)
                     is AppEvent.OpenUsageAccessSettings -> this@RouteActivity.openUsageAccessSettings()
                     is AppEvent.ChatGenerationUpdate -> Unit // 由 ChatNotificationManager 消费
                     is AppEvent.ChatGenerationEnded -> Unit // 由 ChatNotificationManager 消费

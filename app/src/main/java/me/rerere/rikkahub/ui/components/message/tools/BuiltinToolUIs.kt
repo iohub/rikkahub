@@ -70,6 +70,7 @@ import me.rerere.hugeicons.stroke.VolumeHigh
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.data.ai.tools.MemoryToolNames
+import me.rerere.rikkahub.data.ai.tools.local.TEXT_TO_SPEECH_TOOL_NAME
 import me.rerere.rikkahub.data.event.AppEvent
 import me.rerere.rikkahub.data.event.AppEventBus
 import me.rerere.rikkahub.data.repository.MemoryRepository
@@ -327,7 +328,7 @@ object ClipboardToolUI : ToolUIRenderer {
  * 文本转语音: 摘要显示朗读文本与重播按钮
  */
 object TextToSpeechToolUI : ToolUIRenderer {
-    override val toolName: String = "text_to_speech"
+    override val toolName: String = TEXT_TO_SPEECH_TOOL_NAME
 
     override fun icon(context: ToolUIContext): ImageVector = HugeIcons.VolumeHigh
 
@@ -347,27 +348,45 @@ object TextToSpeechToolUI : ToolUIRenderer {
         val eventBus: AppEventBus = koinInject()
         val scope = rememberCoroutineScope()
         val text = context.arguments.getStringContent("text") ?: ""
-        Row(
+        // 模型为本轮生成的动态语气（情绪/语速/场景）；旧消息没有这个参数，留空则整行不渲染
+        val instruct = context.arguments.getStringContent("instruct").orEmpty()
+        Column(
             modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
-            Text(
-                text = text,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            FilledTonalIconButton(
-                onClick = { scope.launch { eventBus.emit(AppEvent.Speak(text)) } },
-                modifier = Modifier.size(28.dp),
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                Icon(
-                    imageVector = HugeIcons.Refresh01,
-                    contentDescription = stringResource(R.string.tool_ui_replay),
-                    modifier = Modifier.size(14.dp),
+                Text(
+                    text = text,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                FilledTonalIconButton(
+                    // 重播沿用同一条动态语气：否则听到的和当初那次不一样，也命中不了按语气区分的缓存
+                    onClick = { scope.launch { eventBus.emit(AppEvent.Speak(text, instruct)) } },
+                    modifier = Modifier.size(28.dp),
+                ) {
+                    Icon(
+                        imageVector = HugeIcons.Refresh01,
+                        contentDescription = stringResource(R.string.tool_ui_replay),
+                        modifier = Modifier.size(14.dp),
+                    )
+                }
+            }
+            if (instruct.isNotBlank()) {
+                Text(
+                    text = if (instruct.length > 40) instruct.take(40) + "…" else instruct,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
         }

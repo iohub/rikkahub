@@ -103,14 +103,25 @@ interface CustomTtsState {
      * @param messageId 这段文本归属的聊天消息 id，仅用于给 [PlaybackState.messageId] 打标。
      *   传了它之后 UI 才能只高亮「正在播放的那条消息」，而不是把所有消息的播放按钮都点亮；
      *   与具体消息无关的场合（设置页试听、语音模式）留空即可
+     * @param instruct 本次朗读的动态语气指令（情绪 / 语速 / 场景，如「excited and fast」）。
+     *   由 `text_to_speech` 工具根据本轮回复的情绪生成，会与设置页配置的静态 instructions 合并后
+     *   一起下发给 provider，并参与音频缓存键（同一文本换语气不会播到旧音频）。
+     *   留空表示只下发静态配置，行为与旧版一致。
      */
-    fun speak(text: String, flushCalled: Boolean = true, messageId: String? = null)
+    fun speak(
+        text: String,
+        flushCalled: Boolean = true,
+        messageId: String? = null,
+        instruct: String = "",
+    )
 
     /**
      * 后台预生成语音：与 [speak] 走完全相同的文本清理、分片与合成链路，但只写入磁盘缓存，不播放。
      * 仅对「开启了缓存的远程 TTS」生效，其它情况静默跳过。
+     *
+     * @param instruct 预生成用的动态语气指令。要与随后 [speak] 的 instruct 保持一致才能命中同一份缓存
      */
-    fun prefetch(text: String)
+    fun prefetch(text: String, instruct: String = "")
 
     /**
      * 固化一条消息的语音：用与播放**完全相同**的文本处理与分片链路合成全部分片，再写入本地固化目录
@@ -186,16 +197,17 @@ private class CustomTtsStateImpl(
         controller.setProvider(provider)
     }
 
-    override fun speak(text: String, flushCalled: Boolean, messageId: String?) {
+    override fun speak(text: String, flushCalled: Boolean, messageId: String?, instruct: String) {
         val processed = text.stripMarkdown()
         // messageId 只是给 PlaybackState 打标，让 UI 能只高亮「正在播放的那条消息」
-        controller.speak(processed, flushCalled, messageId)
+        // instruct 是模型本轮生成的动态语气，由 controller 与静态配置合并后下发（并参与缓存键）
+        controller.speak(processed, flushCalled, messageId, instruct)
     }
 
-    override fun prefetch(text: String) {
+    override fun prefetch(text: String, instruct: String) {
         // 必须与 speak 对称地做 Markdown 清理：否则分片文本不同，缓存键对不上，预生成就白做了
         val processed = text.stripMarkdown()
-        controller.prefetch(processed)
+        controller.prefetch(processed, instruct)
     }
 
     override suspend fun fixateMessageAudio(

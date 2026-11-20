@@ -4,7 +4,18 @@ import me.rerere.ai.ui.UIMessage
 import kotlin.uuid.Uuid
 
 sealed class AppEvent {
-    data class Speak(val text: String) : AppEvent()
+    /**
+     * 请求朗读一段文本。
+     *
+     * @property text 要朗读的纯文本（不含 markdown 标记）。
+     * @property instruct 本轮动态语气指令（情绪 / 语速 / 场景，如「excited and fast」），
+     *   由模型在调用 `text_to_speech` 时生成；它会与设置页配置的静态 instructions 合并后下发。
+     *   留空表示只使用静态配置。
+     */
+    data class Speak(
+        val text: String,
+        val instruct: String = "",
+    ) : AppEvent()
     data object OpenUsageAccessSettings : AppEvent()
 
     /** 聊天生成过程中的流式更新，由 ChatNotificationManager 消费用于 Live Update 通知。 */
