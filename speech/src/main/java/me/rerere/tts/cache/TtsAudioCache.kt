@@ -1,16 +1,9 @@
 package me.rerere.tts.cache
 
 import android.util.Log
-import me.rerere.tts.model.AudioFormat
 import me.rerere.tts.model.TTSResponse
 import me.rerere.tts.provider.TTSProviderSetting
 import java.io.File
-import java.nio.ByteBuffer
-import java.security.MessageDigest
-import java.security.SecureRandom
-import javax.crypto.Cipher
-import javax.crypto.spec.IvParameterSpec
-import javax.crypto.spec.SecretKeySpec
 
 private const val TAG = "TtsAudioCache"
 
@@ -27,11 +20,9 @@ private const val TAG = "TtsAudioCache"
  *
  * ## 安全边界（请勿误解）
  *
- * 文件内容是「防止 .bin 被随手翻看 / 误传」的**混淆级**保护，不是强加密：
- * - 密钥由 App 内的固定常量派生，硬编码在安装包里，无法抵御针对性的逆向；
- * - AES/CTR 不做真实性校验，密文被篡改只会解出噪声，不会被发现（不防篡改）；
- * - 之所以不用 AndroidKeyStore，是因为它的密钥不可导出，换设备/重装后备份里的 .bin
- *   将永久无法解密，和「导入备份能还原」直接冲突。
+ * 文件内容是「防止 .bin 被随手翻看 / 误传」的**混淆级**保护，不是强加密，细节见 [TtsAudioCodec]。
+ * 这套缓存是**可再生产物**：会被 [trim] 按 mtime 淘汰、被 [clear] 清空、也可以在设置里整目录删掉。
+ * 需要「永久保存、不被淘汰」的音频请用 [TtsFixedAudioStore]。
  *
  * 未调用 [init] 时（例如 JVM 单元测试）静默不缓存，所有方法退化为 no-op，
  * 缓存层的任何故障都不允许影响 TTS 播放。
@@ -58,24 +49,8 @@ object TtsAudioCache {
      */
     const val PARTIAL_SUFFIX = ".part"
 
-    // 文件格式版本，读取时不匹配就当作 miss
-    private const val FORMAT_VERSION = 1
-
-    private const val IV_BYTES = 16
-
-    // magic(4) + version(1) + AudioFormat.ordinal(1) + sampleRate(4) + IV(16)
-    private const val HEADER_BYTES = 4 + 1 + 1 + 4 + IV_BYTES
-
-    private val MAGIC = "RTA1".toByteArray()
-
-    // 固定常量派生 256-bit 密钥：换设备、重装 App 后仍然能解开备份里的 .bin
-    private val secretKey: SecretKeySpec by lazy {
-        val key = MessageDigest.getInstance("SHA-256")
-            .digest("rikkahub.tts.audio.cache.v1".toByteArray())
-        SecretKeySpec(key, "AES")
-    }
-
-    private val random = SecureRandom()
+    // 落盘格式（magic / 版本 / 头长 / IV / 密钥）由 TtsAudioCodec 统一维护：
+    // 与 TtsFixedAudioStore（用户固化的音频）共用同一套编解码实现，两边文件才能互相读懂。
 
     @Volatile
     private var rootDir: File? = null
@@ -94,7 +69,8 @@ object TtsAudioCache {
      */
     fun get(providerId: String, key: String): TTSResponse? {
         val file = fileOf(providerId, key) ?: return null
-        val response = runCatching { readResponse(file) }
+        if (!file.isFile) return null
+        val response = runCatching { decodeTtsAudio(file.readBytes()) }
             .onFailure { warn("Failed to read tts audio cache ${file.name}", it) }
             .getOrNull()
         if (response == null) {
@@ -120,7 +96,7 @@ object TtsAudioCache {
         runCatching {
             val parent = target.parentFile ?: return
             parent.mkdirs()
-            val payload = encodePayload(response)
+            val payload = encodeTtsAudio(response)
             // 先写临时文件再重命名，避免并发读取到写了一半的缓存
             val temp = File.createTempFile("tmp_", PARTIAL_SUFFIX, parent)
             try {
@@ -187,54 +163,15 @@ object TtsAudioCache {
             setting.subtalkerTopP?.toString() ?: "-",
             text,
         ).joinToString("\u0000")
-        return sha256(canonical)
+        return sha256Hex(canonical)
     }
-
-    private fun encodePayload(response: TTSResponse): ByteArray {
-        val iv = ByteArray(IV_BYTES).also { random.nextBytes(it) }
-        val payload = ByteArray(HEADER_BYTES + response.audioData.size)
-        MAGIC.copyInto(payload, 0)
-        payload[4] = FORMAT_VERSION.toByte()
-        payload[5] = response.format.ordinal.toByte()
-        ByteBuffer.wrap(payload, 6, 4).putInt(response.sampleRate ?: 0)
-        iv.copyInto(payload, 10)
-        // CTR 是流模式，密文长度与明文完全一致，不需要处理 padding
-        cipher(Cipher.ENCRYPT_MODE, iv)
-            .doFinal(response.audioData, 0, response.audioData.size, payload, HEADER_BYTES)
-        return payload
-    }
-
-    /** 解析失败一律返回 null（由调用方当作 miss 并删除坏文件），不向上抛异常。 */
-    private fun readResponse(file: File): TTSResponse? {
-        if (!file.isFile || file.length() == 0L) return null
-        val bytes = file.readBytes()
-        if (bytes.size < HEADER_BYTES) return null
-        if (!MAGIC.contentEquals(bytes.copyOfRange(0, MAGIC.size))) return null
-        if (bytes[4].toInt() != FORMAT_VERSION) return null
-        val format = AudioFormat.entries.getOrNull(bytes[5].toInt()) ?: return null
-        // 0 表示 sampleRate = null（例如服务端没给采样率时）
-        val sampleRate = ByteBuffer.wrap(bytes, 6, 4).int.takeIf { it > 0 }
-        val iv = bytes.copyOfRange(10, HEADER_BYTES)
-        val plain = cipher(Cipher.DECRYPT_MODE, iv)
-            .doFinal(bytes, HEADER_BYTES, bytes.size - HEADER_BYTES)
-        return TTSResponse(
-            audioData = plain,
-            format = format,
-            sampleRate = sampleRate,
-        )
-    }
-
-    private fun cipher(mode: Int, iv: ByteArray): Cipher =
-        Cipher.getInstance("AES/CTR/NoPadding").apply {
-            init(mode, secretKey, IvParameterSpec(iv))
-        }
 
     private fun dirOf(providerId: String): File? =
         rootDir?.resolve(providerId)?.takeIf { it.isDirectory }
 
     private fun fileOf(providerId: String, key: String): File? {
         val root = rootDir ?: return null
-        return root.resolve(providerId).resolve("${sha256(key)}.$EXTENSION")
+        return root.resolve(providerId).resolve("${sha256Hex(key)}.$EXTENSION")
     }
 
     /** 按 mtime 升序（最久未使用）淘汰，直到总量回到 [maxBytes] 以下 */
@@ -249,11 +186,6 @@ object TtsAudioCache {
             if (file.delete()) total -= size
         }
     }
-
-    private fun sha256(input: String): String =
-        MessageDigest.getInstance("SHA-256")
-            .digest(input.toByteArray())
-            .joinToString("") { "%02x".format(it) }
 
     // JVM 单测里没有 android.util.Log 的实现，日志本身写失败也不能影响缓存逻辑
     private fun warn(message: String, e: Throwable) {

@@ -24,6 +24,7 @@ import me.rerere.rikkahub.data.db.SQLiteConfiguration
 import me.rerere.rikkahub.data.files.FileFolders
 import me.rerere.rikkahub.data.files.MediaCreationFiles
 import me.rerere.tts.cache.TtsAudioCache
+import me.rerere.tts.cache.TtsFixedAudioStore
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.file.Files
@@ -75,7 +76,9 @@ class BackupManager(
                             if ((folder == FileFolders.MEDIA_CREATION &&
                                     file.name.endsWith(MediaCreationFiles.PARTIAL_SUFFIX)) ||
                                 (folder == FileFolders.TTS_AUDIO &&
-                                    file.name.endsWith(TtsAudioCache.PARTIAL_SUFFIX))
+                                    file.name.endsWith(TtsAudioCache.PARTIAL_SUFFIX)) ||
+                                (folder == FileFolders.TTS_FIXED &&
+                                    file.name.endsWith(TtsFixedAudioStore.PARTIAL_SUFFIX))
                             ) {
                                 continue
                             }
@@ -190,11 +193,12 @@ class BackupManager(
                 FileFolders.FONTS,
                 FileFolders.MEDIA_CREATION,
                 FileFolders.TTS_AUDIO,
+                FileFolders.TTS_FIXED,
             )
 
         /** Backed up with their subdirectories; the other folders only contain top-level files. */
         private val NESTED_ATTACHMENT_FOLDERS =
-            setOf(FileFolders.SKILLS, FileFolders.MEDIA_CREATION, FileFolders.TTS_AUDIO)
+            setOf(FileFolders.SKILLS, FileFolders.MEDIA_CREATION, FileFolders.TTS_AUDIO, FileFolders.TTS_FIXED)
 
         // 启动次数不在 Settings 里，备份文件里仍放在 settings.json 的这个字段，和旧备份保持一致
         private const val LAUNCH_COUNT_KEY = "launchCount"

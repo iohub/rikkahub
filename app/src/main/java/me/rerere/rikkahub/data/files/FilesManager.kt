@@ -21,6 +21,7 @@ import me.rerere.rikkahub.utils.exportImage
 import me.rerere.rikkahub.utils.exportImageFile
 import me.rerere.rikkahub.utils.getActivity
 import me.rerere.tts.cache.TtsAudioCache
+import me.rerere.tts.cache.TtsFixedAudioStore
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -527,6 +528,9 @@ object FileFolders {
 
     /** 远程 TTS 合成结果缓存，按 providerId 分子目录；目录名直接复用缓存实现里的常量 */
     const val TTS_AUDIO = TtsAudioCache.FOLDER_NAME
+
+    /** 消息级「语音固化」音频，按消息 id 分子目录；目录名直接复用存储实现里的常量 */
+    const val TTS_FIXED = TtsFixedAudioStore.FOLDER_NAME
 }
 
 suspend fun FilesManager.saveUploadFromUri(
