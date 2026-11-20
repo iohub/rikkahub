@@ -36,6 +36,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -194,6 +195,8 @@ fun ChatMessage(
         ) {
             MessagePartsBlock(
                 assistant = assistant,
+                // 只用来给「点击展开语气调试」的展开态做 key，保证换消息后状态不串
+                messageId = message.id.toString(),
                 role = message.role,
                 parts = message.parts,
                 annotations = message.annotations,
@@ -307,6 +310,7 @@ private const val COLLAPSED_VISIBLE_STEPS = 2
 @Composable
 private fun MessagePartsBlock(
     assistant: Assistant?,
+    messageId: String,
     role: MessageRole,
     model: Model?,
     parts: List<UIMessagePart>,
@@ -321,6 +325,16 @@ private fun MessagePartsBlock(
     val hapticFeedback = LocalHapticFeedback.current
     val settings = LocalSettings.current
     val partsState by rememberUpdatedState(parts)
+
+    // 语音语气调试: 语气块已被 transformer 从正文剥离, 点正文把原始块展开回去
+    // 状态放在消息级(而不是单个文本块级): 分段气泡模式下点任一段都要切同一份, 且语气是整条消息的概念
+    val ttsInstructs = remember(parts) { parts.collectTtsInstructs() }
+    var ttsDebugExpanded by rememberSaveable(messageId) { mutableStateOf(false) }
+    // 没有语气块的消息点了不该有任何反应, 所以这里退化成空操作
+    val hasTtsInstruct = ttsInstructs.isNotEmpty()
+    val toggleTtsDebug: () -> Unit = remember(hasTtsInstruct) {
+        if (hasTtsInstruct) ({ ttsDebugExpanded = !ttsDebugExpanded }) else ({})
+    }
 
     val handleClickCitation: (String) -> Unit = remember {
         handler@{ citationId ->
@@ -464,6 +478,8 @@ private fun MessagePartsBlock(
                                                     role = role,
                                                     color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = settings.displaySetting.bubbleOpacity),
                                                     modifier = Modifier.animateContentSize(),
+                                                    // 点正文切换语气调试面板; 没有语气块时传 null, 保持原来的不可点
+                                                    onClick = toggleTtsDebug.takeIf { hasTtsInstruct },
                                                 ) {
                                                     MarkdownBlock(
                                                         content = paragraph,
@@ -485,6 +501,12 @@ private fun MessagePartsBlock(
                                         onClickCitation = handleClickCitation,
                                         modifier = Modifier
                                             .animateContentSize()
+                                            // 点正文切换语气调试面板; 这里用容器级 clickable 加在文本外层,
+                                            // 与 SelectableContent 的长按选择共存(气泡模式已长期验证这条路径)
+                                            .then(
+                                                if (hasTtsInstruct) Modifier.clickable { toggleTtsDebug() }
+                                                else Modifier
+                                            )
                                     )
                                 }
                             }
@@ -573,6 +595,13 @@ private fun MessagePartsBlock(
             }
         }
     }
+
+    // 语气控制块已被剥离出正文, 这里按需还原原始标签形态, 仅用于调试
+    // 放在分段循环之外(消息级): 分段气泡模式下只会有一个面板
+    TtsInstructDebugPanel(
+        entries = ttsInstructs,
+        expanded = ttsDebugExpanded,
+    )
 
     // Annotations (always rendered at the end)
     if (annotations.isNotEmpty()) {
