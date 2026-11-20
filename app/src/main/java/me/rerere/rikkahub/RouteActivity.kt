@@ -127,6 +127,7 @@ import me.rerere.rikkahub.ui.pages.setting.SettingModelPage
 import me.rerere.rikkahub.ui.pages.setting.SettingPage
 import me.rerere.rikkahub.ui.pages.setting.SettingProviderDetailPage
 import me.rerere.rikkahub.ui.pages.setting.SettingProviderPage
+import me.rerere.rikkahub.ui.pages.setting.SettingReviewerPage
 import me.rerere.rikkahub.ui.pages.setting.SettingSearchDetailPage
 import me.rerere.rikkahub.ui.pages.setting.SettingSearchPage
 import me.rerere.rikkahub.ui.pages.setting.SettingMediaPage
@@ -505,6 +506,10 @@ class RouteActivity : ComponentActivity() {
                                 SettingModelPage()
                             }
 
+                            entry<Screen.SettingReviewer> {
+                                SettingReviewerPage()
+                            }
+
                             entry<Screen.SettingAbout> {
                                 SettingAboutPage()
                             }
@@ -778,6 +783,9 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data object SettingModels : Screen
+
+    @Serializable
+    data object SettingReviewer : Screen
 
     @Serializable
     data object SettingAbout : Screen

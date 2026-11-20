@@ -2063,4 +2063,27 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="setting_remote_tts_cache_clear">캐시 삭제</string>
   <string name="setting_remote_tts_cache_clear_confirm">이 기기에 있는 %1$s의 캐시 음성을 삭제할까요? 캐시는 다시 생성할 수 있지만, 다음 재생 시 서버에 다시 요청합니다.</string>
   <string name="setting_remote_tts_cache_cleared">캐시 %1$d개를 삭제했습니다</string>
+  <string name="setting_page_reviewer">답변 품질 검토</string>
+  <string name="setting_page_reviewer_desc">생성이 끝나면 답변 품질을 자동으로 검토하고, 통과하지 못하면 다시 생성합니다</string>
+  <string name="setting_reviewer_page_title">답변 품질 검토</string>
+  <string name="setting_reviewer_enable">답변 품질 검토 사용</string>
+  <string name="setting_reviewer_enable_desc">생성이 끝난 뒤 답변 품질을 먼저 검토하고, 통과하지 못하면 자동으로 다시 생성합니다. 검토를 통과한 답변만 자동 읽기나 음성 미리 생성 대상이 됩니다.</string>
+  <string name="setting_reviewer_model">검토 모델</string>
+  <string name="setting_reviewer_model_desc">품질 검토에 사용할 모델입니다. 설정하지 않으면 빠른 모델을 따릅니다</string>
+  <string name="setting_reviewer_model_follow_fast">빠른 모델과 동일</string>
+  <string name="setting_reviewer_strength">검토 강도</string>
+  <string name="setting_reviewer_strength_desc">검토의 엄격함을 선택합니다. 엄격할수록 답변이 다시 생성되기 쉽습니다</string>
+  <string name="setting_reviewer_preset_strict">엄격</string>
+  <string name="setting_reviewer_preset_balanced">균형</string>
+  <string name="setting_reviewer_preset_loose">관대</string>
+  <string name="setting_reviewer_preset_custom">사용자 지정</string>
+  <string name="setting_reviewer_preset_strict_desc">엄격: 점수가 80 이상이고 문제가 하나도 없어야 통과</string>
+  <string name="setting_reviewer_preset_balanced_desc">균형: 점수 60 이상. 질문과 무관한 답변, 잘린 답변, 역할 이탈만 통과 불가</string>
+  <string name="setting_reviewer_preset_loose_desc">관대: 질문과 무관한 답변, 잘린 답변, 역할 이탈 같은 치명적인 문제만 통과 불가</string>
+  <string name="setting_reviewer_prompt">검토 프롬프트</string>
+  <string name="setting_reviewer_prompt_desc">사용 가능한 자리표시자: {history} 최근 대화 맥락, {reply} 검토할 답변. 수정하면 검토 강도가 사용자 지정으로 바뀝니다.</string>
+  <string name="setting_reviewer_prompt_sheet_desc">모델은 JSON만 출력해야 합니다: {"pass":true,"score":85,"issues":[],"suggestion":""}. pass가 이 답변을 사용할지 결정합니다.</string>
+  <string name="setting_reviewer_max_retry">최대 재생성 횟수</string>
+  <string name="setting_reviewer_max_retry_desc">검토를 통과하지 못한 답변을 다시 생성할 최대 횟수입니다. 0이면 재생성 없이 검토만 합니다</string>
+  <string name="setting_reviewer_fail_open_hint">검토 자체가 실패하면(네트워크 오류, 시간 초과) 그대로 전달하며 대화를 막지 않습니다.</string>
 </resources>

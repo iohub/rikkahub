@@ -789,7 +789,7 @@ class ChatService(
                     val node = session.state.value.getMessageNodeByMessageId(messageId)
                         ?: return@launchGenerationJob
 
-                    if (node.role == MessageRole.USER) {
+                    val result = if (node.role == MessageRole.USER) {
                         session.tryUpdate { conversation ->
                             val index = conversation.messageNodes.indexOfFirst { it.id == node.id }
                             // 查找之后这条消息被删掉了
@@ -802,7 +802,8 @@ class ChatService(
                         runTurn(session, regenerateNodeId = node.id)
                     }
 
-                    notifyGenerationDone(session, conversationId)
+                    // 失败时同 sendQueuedMessage：已经报过错，不再拿半截内容去审查 / 朗读
+                    if (result != TurnResult.Failed) notifyGenerationDone(session, conversationId)
                 } catch (e: Exception) {
                     reportFailure(session, e, R.string.error_title_regenerate_message)
                 }

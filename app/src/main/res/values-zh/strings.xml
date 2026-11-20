@@ -2146,4 +2146,27 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_remote_tts_cache_clear">清空缓存</string>
   <string name="setting_remote_tts_cache_clear_confirm">将删除本机 %1$s 的缓存语音？缓存可以重新生成，但下次播放需要重新请求服务端。</string>
   <string name="setting_remote_tts_cache_cleared">已清空 %1$d 条缓存</string>
+  <string name="setting_page_reviewer">回复质量审查</string>
+  <string name="setting_page_reviewer_desc">生成完成后自动审查回复质量，不合格则重新生成</string>
+  <string name="setting_reviewer_page_title">回复质量审查</string>
+  <string name="setting_reviewer_enable">启用回复质量审查</string>
+  <string name="setting_reviewer_enable_desc">生成完成后先审查回复质量，不合格自动重新生成；只有通过审查的回复才会自动朗读或预生成语音。</string>
+  <string name="setting_reviewer_model">审查模型</string>
+  <string name="setting_reviewer_model_desc">用于质量审查的模型；不设置时跟随快速模型</string>
+  <string name="setting_reviewer_model_follow_fast">跟随快速模型</string>
+  <string name="setting_reviewer_strength">审查强度</string>
+  <string name="setting_reviewer_strength_desc">选择审查的严格程度，越严格越容易把回复打回重写</string>
+  <string name="setting_reviewer_preset_strict">严格</string>
+  <string name="setting_reviewer_preset_balanced">平衡</string>
+  <string name="setting_reviewer_preset_loose">宽松</string>
+  <string name="setting_reviewer_preset_custom">自定义</string>
+  <string name="setting_reviewer_preset_strict_desc">严格：评分需达到 80 分且没有任何问题</string>
+  <string name="setting_reviewer_preset_balanced_desc">平衡：评分达到 60 分即可，仅对答非所问、内容截断、跳出角色零容忍</string>
+  <string name="setting_reviewer_preset_loose_desc">宽松：只有答非所问、内容截断、跳出角色这类致命问题才不通过</string>
+  <string name="setting_reviewer_prompt">审查 Prompt</string>
+  <string name="setting_reviewer_prompt_desc">可用占位符：{history} 最近的对话上下文、{reply} 待审查的回复。修改 prompt 会把审查强度切换为自定义。</string>
+  <string name="setting_reviewer_prompt_sheet_desc">模型必须只输出 JSON：{"pass":true,"score":85,"issues":[],"suggestion":""}，其中 pass 决定这条回复是否被采纳。</string>
+  <string name="setting_reviewer_max_retry">最大重试次数</string>
+  <string name="setting_reviewer_max_retry_desc">审查不通过时最多重新生成几次；0 表示只审查、不重新生成</string>
+  <string name="setting_reviewer_fail_open_hint">审查失败（网络异常、超时）会自动放行，不会阻塞对话。</string>
 </resources>

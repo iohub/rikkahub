@@ -2061,4 +2061,27 @@
   <string name="setting_remote_tts_cache_clear">清除快取</string>
   <string name="setting_remote_tts_cache_clear_confirm">將刪除本機 %1$s 的快取語音？快取可以重新產生，但下次播放需要重新請求伺服器。</string>
   <string name="setting_remote_tts_cache_cleared">已清除 %1$d 筆快取</string>
+  <string name="setting_page_reviewer">回覆品質審查</string>
+  <string name="setting_page_reviewer_desc">產生完成後自動審查回覆品質，不合格則重新產生</string>
+  <string name="setting_reviewer_page_title">回覆品質審查</string>
+  <string name="setting_reviewer_enable">啟用回覆品質審查</string>
+  <string name="setting_reviewer_enable_desc">產生完成後先審查回覆品質，不合格自動重新產生；只有通過審查的回覆才會自動朗讀或預先產生語音。</string>
+  <string name="setting_reviewer_model">審查模型</string>
+  <string name="setting_reviewer_model_desc">用於品質審查的模型；未設定時跟隨快速模型</string>
+  <string name="setting_reviewer_model_follow_fast">跟隨快速模型</string>
+  <string name="setting_reviewer_strength">審查強度</string>
+  <string name="setting_reviewer_strength_desc">選擇審查的嚴格程度，越嚴格越容易把回覆退回重寫</string>
+  <string name="setting_reviewer_preset_strict">嚴格</string>
+  <string name="setting_reviewer_preset_balanced">平衡</string>
+  <string name="setting_reviewer_preset_loose">寬鬆</string>
+  <string name="setting_reviewer_preset_custom">自訂</string>
+  <string name="setting_reviewer_preset_strict_desc">嚴格：評分需達到 80 分且沒有任何問題</string>
+  <string name="setting_reviewer_preset_balanced_desc">平衡：評分達到 60 分即可，僅對答非所問、內容截斷、跳出角色零容忍</string>
+  <string name="setting_reviewer_preset_loose_desc">寬鬆：只有答非所問、內容截斷、跳出角色這類致命問題才不通過</string>
+  <string name="setting_reviewer_prompt">審查 Prompt</string>
+  <string name="setting_reviewer_prompt_desc">可用佔位符：{history} 最近的對話上下文、{reply} 待審查的回覆。修改 prompt 會把審查強度切換為自訂。</string>
+  <string name="setting_reviewer_prompt_sheet_desc">模型必須只輸出 JSON：{"pass":true,"score":85,"issues":[],"suggestion":""}，其中 pass 決定這則回覆是否被採用。</string>
+  <string name="setting_reviewer_max_retry">最大重試次數</string>
+  <string name="setting_reviewer_max_retry_desc">審查不通過時最多重新產生幾次；0 表示只審查、不重新產生</string>
+  <string name="setting_reviewer_fail_open_hint">審查失敗（網路異常、逾時）會自動放行，不會阻塞對話。</string>
 </resources>

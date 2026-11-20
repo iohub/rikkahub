@@ -2063,4 +2063,27 @@
   <string name="setting_remote_tts_cache_clear">Очистить кэш</string>
   <string name="setting_remote_tts_cache_clear_confirm">Удалить %1$s кэшированного аудио на этом устройстве? Кэш можно создать заново, но при следующем воспроизведении снова будет запрос к серверу.</string>
   <string name="setting_remote_tts_cache_cleared">Очищено записей: %1$d</string>
+  <string name="setting_page_reviewer">Проверка качества ответов</string>
+  <string name="setting_page_reviewer_desc">Проверяет каждый ответ после генерации и перегенерирует его при провале</string>
+  <string name="setting_reviewer_page_title">Проверка качества ответов</string>
+  <string name="setting_reviewer_enable">Включить проверку ответов</string>
+  <string name="setting_reviewer_enable_desc">После генерации ответ проверяется, а при провале автоматически перегенерируется. Только прошедшие проверку ответы озвучиваются и готовятся заранее.</string>
+  <string name="setting_reviewer_model">Модель для проверки</string>
+  <string name="setting_reviewer_model_desc">Модель, которая проверяет качество. Если не задана, используется быстрая модель</string>
+  <string name="setting_reviewer_model_follow_fast">Как быстрая модель</string>
+  <string name="setting_reviewer_strength">Строгость проверки</string>
+  <string name="setting_reviewer_strength_desc">Насколько строго проверяются ответы. Чем строже, тем чаще ответ отправляется на перегенерацию</string>
+  <string name="setting_reviewer_preset_strict">Строгая</string>
+  <string name="setting_reviewer_preset_balanced">Сбалансированная</string>
+  <string name="setting_reviewer_preset_loose">Мягкая</string>
+  <string name="setting_reviewer_preset_custom">Своя</string>
+  <string name="setting_reviewer_preset_strict_desc">Строгая: оценка не ниже 80 и ни одной проблемы</string>
+  <string name="setting_reviewer_preset_balanced_desc">Сбалансированная: оценка не ниже 60. Проваливают только ответ не по теме, обрыв и выход из роли</string>
+  <string name="setting_reviewer_preset_loose_desc">Мягкая: проваливают только серьёзные проблемы — ответ не по теме, обрыв, выход из роли</string>
+  <string name="setting_reviewer_prompt">Промпт проверки</string>
+  <string name="setting_reviewer_prompt_desc">Подстановки: {history} — недавняя история диалога, {reply} — проверяемый ответ. При изменении строгость переключается на свою.</string>
+  <string name="setting_reviewer_prompt_sheet_desc">Модель должна вернуть только JSON: {"pass":true,"score":85,"issues":[],"suggestion":""}. Поле pass решает, будет ли ответ принят.</string>
+  <string name="setting_reviewer_max_retry">Максимум перегенераций</string>
+  <string name="setting_reviewer_max_retry_desc">Сколько раз можно перегенерировать ответ, не прошедший проверку. 0 — только проверка без перегенерации</string>
+  <string name="setting_reviewer_fail_open_hint">Если сама проверка не удалась (сеть, таймаут), ответ выдаётся как есть, чтобы диалог не блокировался.</string>
 </resources>

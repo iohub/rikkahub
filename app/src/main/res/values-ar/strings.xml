@@ -2061,4 +2061,27 @@
   <string name="setting_remote_tts_cache_clear">مسح ذاكرة التخزين المؤقت</string>
   <string name="setting_remote_tts_cache_clear_confirm">حذف %1$s من الصوت المخزَّن على هذا الجهاز؟ يمكن إعادة توليد الذاكرة المؤقتة، لكن التشغيل التالي سيطلب من الخادم من جديد.</string>
   <string name="setting_remote_tts_cache_cleared">تم مسح %1$d عنصرًا من الذاكرة المؤقتة</string>
+  <string name="setting_page_reviewer">مراجعة جودة الرد</string>
+  <string name="setting_page_reviewer_desc">يراجع جودة كل رد بعد التوليد ويعيد توليده عند عدم اجتيازه</string>
+  <string name="setting_reviewer_page_title">مراجعة جودة الرد</string>
+  <string name="setting_reviewer_enable">تفعيل مراجعة الرد</string>
+  <string name="setting_reviewer_enable_desc">تُراجع جودة الرد بعد التوليد ويُعاد توليده تلقائيًا عند عدم اجتيازه. الردود المجتازة فقط هي التي تُقرأ آليًا أو تُولَّد أصواتها مسبقًا.</string>
+  <string name="setting_reviewer_model">نموذج المراجعة</string>
+  <string name="setting_reviewer_model_desc">النموذج المستخدم في مراجعة الجودة؛ عند عدم تعيينه يُستخدم النموذج السريع</string>
+  <string name="setting_reviewer_model_follow_fast">كالنموذج السريع</string>
+  <string name="setting_reviewer_strength">شدة المراجعة</string>
+  <string name="setting_reviewer_strength_desc">اختيار مدى صرامة المراجعة؛ كلما زادت الصرامة زادت إعادة توليد الردود</string>
+  <string name="setting_reviewer_preset_strict">صارمة</string>
+  <string name="setting_reviewer_preset_balanced">متوازنة</string>
+  <string name="setting_reviewer_preset_loose">متساهلة</string>
+  <string name="setting_reviewer_preset_custom">مخصصة</string>
+  <string name="setting_reviewer_preset_strict_desc">صارمة: يجب أن تبلغ الدرجة 80 أو أكثر وألا يوجد أي خلل</string>
+  <string name="setting_reviewer_preset_balanced_desc">متوازنة: تكفي درجة 60. لا يُرفض الرد إلا إذا كان خارج الموضوع أو مبتورًا أو خرج عن الدور</string>
+  <string name="setting_reviewer_preset_loose_desc">متساهلة: لا يُرفض الرد إلا في المشكلات القاتلة كالخروج عن الموضوع أو الاقتطاع أو الخروج عن الدور</string>
+  <string name="setting_reviewer_prompt">موجِّه المراجعة</string>
+  <string name="setting_reviewer_prompt_desc">العناصر المتاحة: {history} لسياق الحوار الأخير، و{reply} للرد المراجَع. تعديل الموجِّه يحوّل الشدة إلى مخصصة.</string>
+  <string name="setting_reviewer_prompt_sheet_desc">يجب أن يُخرج النموذج JSON فقط: {"pass":true,"score":85,"issues":[],"suggestion":""}؛ ويحدد الحقل pass قبول الرد أو رفضه.</string>
+  <string name="setting_reviewer_max_retry">الحد الأقصى لإعادة التوليد</string>
+  <string name="setting_reviewer_max_retry_desc">عدد مرات إعادة توليد رد لم يجتز المراجعة. القيمة 0 تعني المراجعة فقط دون إعادة توليد</string>
+  <string name="setting_reviewer_fail_open_hint">إذا فشلت المراجعة نفسها (شبكة أو مهلة) يُسلَّم الرد كما هو كي لا يتوقف الحوار.</string>
 </resources>

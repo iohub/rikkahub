@@ -2061,4 +2061,27 @@
   <string name="setting_remote_tts_cache_clear">Cache leeren</string>
   <string name="setting_remote_tts_cache_clear_confirm">%1$s zwischengespeichertes Audio auf diesem Gerät löschen? Der Cache kann neu erzeugt werden, die nächste Wiedergabe fragt aber wieder den Server an.</string>
   <string name="setting_remote_tts_cache_cleared">%1$d Cache-Einträge geleert</string>
+  <string name="setting_page_reviewer">Antwortqualität prüfen</string>
+  <string name="setting_page_reviewer_desc">Prüft jede Antwort nach der Generierung und generiert sie bei Bedarf neu</string>
+  <string name="setting_reviewer_page_title">Antwortqualität prüfen</string>
+  <string name="setting_reviewer_enable">Antwortprüfung aktivieren</string>
+  <string name="setting_reviewer_enable_desc">Prüft die Antwort nach der Generierung und generiert sie bei Bedarf neu. Nur geprüfte Antworten werden automatisch vorgelesen oder als Sprache vorab erzeugt.</string>
+  <string name="setting_reviewer_model">Prüfmodell</string>
+  <string name="setting_reviewer_model_desc">Modell für die Qualitätsprüfung. Ohne Auswahl wird das schnelle Modell verwendet</string>
+  <string name="setting_reviewer_model_follow_fast">Wie das schnelle Modell</string>
+  <string name="setting_reviewer_strength">Prüfstrenge</string>
+  <string name="setting_reviewer_strength_desc">Legt fest, wie streng geprüft wird. Strengere Stufen schicken mehr Antworten zur Neugenerierung zurück</string>
+  <string name="setting_reviewer_preset_strict">Streng</string>
+  <string name="setting_reviewer_preset_balanced">Ausgeglichen</string>
+  <string name="setting_reviewer_preset_loose">Locker</string>
+  <string name="setting_reviewer_preset_custom">Benutzerdefiniert</string>
+  <string name="setting_reviewer_preset_strict_desc">Streng: Punktzahl ab 80 und keinerlei Probleme</string>
+  <string name="setting_reviewer_preset_balanced_desc">Ausgeglichen: Punktzahl ab 60. Nur Themenverfehlung, abgeschnittene Antworten und Rollenbruch fallen durch</string>
+  <string name="setting_reviewer_preset_loose_desc">Locker: Nur grobe Fehler wie Themenverfehlung, abgeschnittene Antworten oder Rollenbruch fallen durch</string>
+  <string name="setting_reviewer_prompt">Prüf-Prompt</string>
+  <string name="setting_reviewer_prompt_desc">Platzhalter: {history} für den letzten Gesprächsverlauf, {reply} für die zu prüfende Antwort. Eine Änderung stellt die Prüfstrenge auf Benutzerdefiniert.</string>
+  <string name="setting_reviewer_prompt_sheet_desc">Das Modell muss ausschließlich JSON zurückgeben: {"pass":true,"score":85,"issues":[],"suggestion":""}. Das Feld pass entscheidet, ob die Antwort übernommen wird.</string>
+  <string name="setting_reviewer_max_retry">Maximale Neugenerierungen</string>
+  <string name="setting_reviewer_max_retry_desc">Wie oft eine durchgefallene Antwort neu generiert werden darf. 0 prüft nur, ohne neu zu generieren</string>
+  <string name="setting_reviewer_fail_open_hint">Schlägt die Prüfung selbst fehl (Netzwerkfehler, Zeitüberschreitung), wird die Antwort ungeprüft ausgeliefert, damit das Gespräch nicht blockiert.</string>
 </resources>
