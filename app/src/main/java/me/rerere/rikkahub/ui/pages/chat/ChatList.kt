@@ -106,6 +106,11 @@ fun ChatList(
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)? = null,
     onToggleFavorite: ((MessageNode) -> Unit)? = null,
     onConversationSystemPromptChange: ((String?) -> Unit)? = null,
+    // 消息级语音固化：单条三项动作 + 批量确认
+    onFixateAudio: ((UIMessage) -> Unit)? = null,
+    onRegenerateAudio: ((UIMessage) -> Unit)? = null,
+    onUnfixateAudio: ((UIMessage) -> Unit)? = null,
+    onFixateSelected: ((List<Uuid>) -> Unit)? = null,
 ) {
     val previewProgress = rememberPreviewSwipeProgress(previewMode)
     val scope = rememberCoroutineScope()
@@ -165,6 +170,10 @@ fun ChatList(
                 onToolAnswer = onToolAnswer,
                 onToggleFavorite = onToggleFavorite,
                 onConversationSystemPromptChange = onConversationSystemPromptChange,
+                onFixateAudio = onFixateAudio,
+                onRegenerateAudio = onRegenerateAudio,
+                onUnfixateAudio = onUnfixateAudio,
+                onFixateSelected = onFixateSelected,
                 selectionState = selectionState,
             )
         }
@@ -237,6 +246,10 @@ private fun ChatListNormal(
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)? = null,
     onToggleFavorite: ((MessageNode) -> Unit)? = null,
     onConversationSystemPromptChange: ((String?) -> Unit)? = null,
+    onFixateAudio: ((UIMessage) -> Unit)? = null,
+    onRegenerateAudio: ((UIMessage) -> Unit)? = null,
+    onUnfixateAudio: ((UIMessage) -> Unit)? = null,
+    onFixateSelected: ((List<Uuid>) -> Unit)? = null,
     selectionState: ChatSelectionState,
 ) {
     val scope = rememberCoroutineScope()
@@ -397,6 +410,15 @@ private fun ChatListNormal(
                             onToggleFavorite = {
                                 onToggleFavorite?.invoke(node)
                             },
+                            onFixateAudio = onFixateAudio?.let { callback ->
+                                { callback(node.currentMessage) }
+                            },
+                            onRegenerateAudio = onRegenerateAudio?.let { callback ->
+                                { callback(node.currentMessage) }
+                            },
+                            onUnfixateAudio = onUnfixateAudio?.let { callback ->
+                                { callback(node.currentMessage) }
+                            },
                             onTranslate = onTranslate,
                             onClearTranslation = onClearTranslation,
                             onToolApproval = onToolApproval,
@@ -473,13 +495,25 @@ private fun ChatListNormal(
                     .zIndex(5f)
             )
 
-            // 完成选择
+            // 完成选择：按模式分流到「导出」或「批量固化语音」
             ChatSelectionToolbar(
                 state = selectionState,
                 allIds = conversation.messageNodes.map { it.id },
+                mode = selectionState.mode,
+                selectedCount = selectedItems.size,
                 onConfirm = {
+                    // mode 要在 cancel() 之前读出来，它会重置成 Export
+                    val mode = selectionState.mode
                     selectionState.selecting = false
-                    if (conversation.messageNodes.any { it.id in selectedItems }) {
+                    if (mode == ChatSelectionMode.FixateAudio) {
+                        val ids = selectedItems.toList()
+                        // 进度对话框与落库都由页面负责，这里只把选中的 node id 递上去
+                        if (ids.isNotEmpty() && onFixateSelected != null) {
+                            onFixateSelected.invoke(ids)
+                        } else {
+                            selectionState.cancel()
+                        }
+                    } else if (conversation.messageNodes.any { it.id in selectedItems }) {
                         showExportSheet = true
                     }
                 },

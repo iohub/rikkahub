@@ -13,6 +13,7 @@ import androidx.core.net.toUri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.analytics.FirebaseAnalytics
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -25,6 +26,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import me.rerere.ai.provider.Model
 import me.rerere.ai.ui.FixedAudioInfo
 import me.rerere.ai.ui.UIMessage
@@ -55,6 +57,7 @@ import me.rerere.rikkahub.ui.hooks.ChatInputState
 import me.rerere.rikkahub.utils.UiState
 import me.rerere.rikkahub.utils.UpdateChecker
 import me.rerere.rikkahub.web.ApiException
+import me.rerere.tts.cache.TtsFixedAudioStore
 import java.util.Locale
 import kotlin.uuid.Uuid
 
@@ -343,6 +346,13 @@ class ChatVM(
     fun deleteMessage(message: UIMessage) {
         viewModelScope.launch {
             chatService.deleteMessage(_conversationId, message)
+            // 固化音频是按消息 id 分区存在 filesDir 下的独立文件，消息没了就再也没人引用它。
+            // 放在删除成功之后：删除失败时保留音频，避免消息还在却播不出已固化的内容。
+            if (message.fixedAudio != null) {
+                withContext(Dispatchers.IO) {
+                    TtsFixedAudioStore.deleteMessage(message.id.toString())
+                }
+            }
         }
     }
 

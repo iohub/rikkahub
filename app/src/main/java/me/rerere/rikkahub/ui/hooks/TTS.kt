@@ -99,8 +99,12 @@ interface CustomTtsState {
     /**
      * Speaks the given text using the selected TTS provider.
      * Long texts will be automatically chunked and queued.
+     *
+     * @param messageId 这段文本归属的聊天消息 id，仅用于给 [PlaybackState.messageId] 打标。
+     *   传了它之后 UI 才能只高亮「正在播放的那条消息」，而不是把所有消息的播放按钮都点亮；
+     *   与具体消息无关的场合（设置页试听、语音模式）留空即可
      */
-    fun speak(text: String, flushCalled: Boolean = true)
+    fun speak(text: String, flushCalled: Boolean = true, messageId: String? = null)
 
     /**
      * 后台预生成语音：与 [speak] 走完全相同的文本清理、分片与合成链路，但只写入磁盘缓存，不播放。
@@ -182,9 +186,10 @@ private class CustomTtsStateImpl(
         controller.setProvider(provider)
     }
 
-    override fun speak(text: String, flushCalled: Boolean) {
+    override fun speak(text: String, flushCalled: Boolean, messageId: String?) {
         val processed = text.stripMarkdown()
-        controller.speak(processed, flushCalled)
+        // messageId 只是给 PlaybackState 打标，让 UI 能只高亮「正在播放的那条消息」
+        controller.speak(processed, flushCalled, messageId)
     }
 
     override fun prefetch(text: String) {

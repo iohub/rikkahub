@@ -119,6 +119,10 @@ fun ChatMessage(
     onUpdate: (MessageNode) -> Unit,
     isFavorite: Boolean = false,
     onToggleFavorite: (() -> Unit)? = null,
+    // 语音固化三项动作（固化 / 重新生成 / 取消固化），由聊天页注入；为 null 时菜单不显示对应项
+    onFixateAudio: (() -> Unit)? = null,
+    onRegenerateAudio: (() -> Unit)? = null,
+    onUnfixateAudio: (() -> Unit)? = null,
     onTranslate: ((UIMessage, Locale) -> Unit)? = null,
     onClearTranslation: (UIMessage) -> Unit = {},
     onToolApproval: ((toolCallId: String, approved: Boolean, reason: String) -> Unit)? = null,
@@ -262,6 +266,9 @@ fun ChatMessage(
             },
             isFavorite = isFavorite,
             onToggleFavorite = onToggleFavorite,
+            onFixateAudio = onFixateAudio,
+            onRegenerateAudio = onRegenerateAudio,
+            onUnfixateAudio = onUnfixateAudio,
             onWebViewPreview = {
                 val textContent = message.parts
                     .filterIsInstance<UIMessagePart.Text>()

@@ -34,7 +34,8 @@ fun TTSAutoPlay(vm: ChatVM, setting: Settings, conversation: Conversation) {
                         textToSpeak = textToSpeak.removeBracketedContent() ?: textToSpeak
                     }
                     if (textToSpeak.isNotBlank()) {
-                        tts.speak(textToSpeak)
+                        // 带上 messageId：自动朗读期间这条消息的播放按钮也会高亮，与手动点播放一致
+                        tts.speak(textToSpeak, messageId = lastMessage.id.toString())
                     }
                 }
             }

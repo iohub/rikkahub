@@ -72,6 +72,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ProviderSetting
+import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Delete01
@@ -81,6 +82,7 @@ import me.rerere.hugeicons.stroke.Menu03
 import me.rerere.hugeicons.stroke.MessageAdd01
 import me.rerere.hugeicons.stroke.MoreVertical
 import me.rerere.hugeicons.stroke.Share04
+import me.rerere.hugeicons.stroke.VolumeHigh
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.findProvider
@@ -102,6 +104,7 @@ import me.rerere.rikkahub.ui.components.ai.completion.WorkspaceCompletionProvide
 import me.rerere.rikkahub.ui.components.ai.rememberChatAttachmentPickerActions
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.context.LocalNavController
+import me.rerere.rikkahub.ui.context.LocalTTSState
 import me.rerere.rikkahub.ui.context.LocalToaster
 import me.rerere.rikkahub.ui.context.Navigator
 import me.rerere.rikkahub.ui.hooks.ChatInputState
@@ -319,12 +322,22 @@ private fun ChatPageContent(
 ) {
     val scope = rememberCoroutineScope()
     val toaster = LocalToaster.current
+    val context = LocalContext.current
     val workspaceRepository: WorkspaceRepository = koinInject()
     val sessionActivity by vm.sessionActivity.collectAsStateWithLifecycle()
 
     var previewMode by rememberSaveable { mutableStateOf(false) }
     val selectionState = rememberChatSelectionState()
     var showDeleteConfirm by remember { mutableStateOf(false) }
+
+    // 消息级语音固化：同一时刻只允许一个固化任务，进度对话框的状态由这里持有
+    val tts = LocalTTSState.current
+    val batchFixateState = remember { BatchFixateAudioState() }
+    // 提示语必须在 Composable 作用域取出来：下面的局部函数不是 @Composable，不能调 stringResource
+    val fixedAudioToast = stringResource(R.string.chat_message_fixed_audio_toast)
+    val regenerateAudioToast = stringResource(R.string.chat_message_regenerate_audio_toast)
+    val unfixateAudioToast = stringResource(R.string.chat_message_unfixate_audio_toast)
+    val fixateAudioFailedToast = stringResource(R.string.chat_message_fixate_audio_failed)
     val hazeState = rememberHazeState()
     var showFilesSheet by remember { mutableStateOf(false) }
     val attachmentPickerActions = rememberChatAttachmentPickerActions(
@@ -359,6 +372,81 @@ private fun ChatPageContent(
     TTSAutoPlay(vm = vm, setting = setting, conversation = conversation)
     TTSPrefetch(vm = vm, setting = setting, conversation = conversation)
 
+    /**
+     * 单条消息的固化 / 重新生成。
+     *
+     * 文本直接传 `message.toText()` 原文：`fixateMessageAudio` 内部会用与播放**完全相同**的清理链路
+     * （只读引号内 / 只读括号外 / Markdown），在这里再处理一遍会让分片边界对不上。
+     */
+    fun fixateOneMessageAudio(message: UIMessage, forceRegenerate: Boolean) {
+        // 批量固化进行中就不接受单条请求：两者共用同一个 controller，混在一起会互相打断
+        if (batchFixateState.running) return
+        scope.launch {
+            val info = tts.fixateMessageAudio(
+                messageId = message.id,
+                text = message.toText(),
+                forceRegenerate = forceRegenerate,
+            )
+            if (info != null) {
+                vm.setMessageFixedAudio(message.id, info)
+                toaster.show(
+                    if (forceRegenerate) regenerateAudioToast else fixedAudioToast,
+                    type = ToastType.Success,
+                )
+            } else {
+                // 具体原因（未选 provider / 无可朗读文本 / 合成失败）由 controller 写进 error
+                toaster.show(fixateAudioFailedToast, type = ToastType.Error)
+            }
+        }
+    }
+
+    /** 取消固化：先删磁盘上的音频，再清掉消息上的元数据 */
+    fun unfixateOneMessageAudio(message: UIMessage) {
+        if (batchFixateState.running) return
+        scope.launch {
+            tts.deleteFixedMessageAudio(message.id)
+            vm.setMessageFixedAudio(message.id, null)
+            toaster.show(unfixateAudioToast)
+        }
+    }
+
+    /**
+     * 批量固化：把选中的 node id 解析成消息，跳过已固化和无文本的，逐条合成后**一次性**落库。
+     *
+     * 取消是协作式的（[BatchFixateAudioState.cancelRequested]）：当前这条做完才跳出循环，
+     * 已完成的结果照样落库，不会为了立刻中断而丢掉已经花掉的合成。
+     */
+    fun startBatchFixate(nodeIds: List<Uuid>) {
+        if (batchFixateState.running) return
+        val nodes = conversation.messageNodes.filter { it.id in nodeIds }
+        // 已固化的默认跳过：再合成一遍既浪费额度，又会覆盖掉用户已经满意的音频
+        val targets = nodes
+            .filter { it.currentMessage.fixedAudio == null }
+            .filter { it.currentMessage.toText().isNotBlank() }
+        val skipped = nodes.size - targets.size
+        if (targets.isEmpty()) {
+            // 没有可做的：不弹一个 0/0 的进度框，直接回报跳过量
+            selectionState.cancel()
+            toaster.show(context.getString(R.string.chat_fixate_progress_done, 0, 0, skipped))
+            return
+        }
+        // 固化与朗读共用同一个 controller，先停掉正在播的，避免播放状态被中途改写
+        tts.stop()
+        scope.launch {
+            batchFixateState.start(targets.size, skipped)
+            val updates = runBatchFixate(tts, targets.map { it.currentMessage }, batchFixateState)
+            // 一次性落库：只有一次 mutate，整会话的 node 表只重写一遍
+            if (updates.isNotEmpty()) vm.setMessagesFixedAudio(updates)
+            val failed = batchFixateState.failed
+            batchFixateState.finish()
+            selectionState.cancel()
+            toaster.show(
+                context.getString(R.string.chat_fixate_progress_done, updates.size, failed, skipped),
+                type = if (failed > 0) ToastType.Warning else ToastType.Success,
+            )
+        }
+    }
+
     BackHandler(previewMode) {
         previewMode = false
     }
@@ -389,7 +477,18 @@ private fun ChatPageContent(
                     onExport = {
                         // 跟消息上的分享一样进入多选，默认全选，用户可以再挑
                         previewMode = false
-                        selectionState.start(conversation.messageNodes.map { it.id })
+                        selectionState.start(
+                            conversation.messageNodes.map { it.id },
+                            ChatSelectionMode.Export,
+                        )
+                    },
+                    onFixateAudio = {
+                        // 批量固化入口：同样是全选，用户可以取消掉不想固化的那几条
+                        previewMode = false
+                        selectionState.start(
+                            conversation.messageNodes.map { it.id },
+                            ChatSelectionMode.FixateAudio,
+                        )
                     },
                     onDelete = {
                         showDeleteConfirm = true
@@ -538,6 +637,18 @@ private fun ChatPageContent(
                 onToggleFavorite = { node ->
                     vm.toggleMessageFavorite(node)
                 },
+                onFixateAudio = { message ->
+                    fixateOneMessageAudio(message, forceRegenerate = false)
+                },
+                onRegenerateAudio = { message ->
+                    fixateOneMessageAudio(message, forceRegenerate = true)
+                },
+                onUnfixateAudio = { message ->
+                    unfixateOneMessageAudio(message)
+                },
+                onFixateSelected = { ids ->
+                    startBatchFixate(ids)
+                },
                 onConversationSystemPromptChange = { newPrompt ->
                     vm.updateConversationSystemPrompt(newPrompt)
                 },
@@ -553,11 +664,24 @@ private fun ChatPageContent(
                 showDeleteConfirm = false
                 scope.launch {
                     vm.deleteConversation(conversation).join()
+                    // 会话删掉之后，它下面每条消息的固化音频都没人引用了，顺手清掉免得白占磁盘
+                    conversation.messageNodes.forEach { node ->
+                        val message = node.currentMessage
+                        if (message.fixedAudio != null) {
+                            tts.deleteFixedMessageAudio(message.id)
+                        }
+                    }
                     navigateToChatPage(navController)
                 }
             },
             onDismiss = { showDeleteConfirm = false },
             text = { Text(stringResource(R.string.chat_page_delete_conversation_confirm)) },
+        )
+
+        // 批量固化进度：进行中不可点外部关闭，只能点「取消」
+        BatchFixateAudioDialog(
+            state = batchFixateState,
+            onCancel = { batchFixateState.cancelRequested = true },
         )
 
         if (showFilesSheet) {
@@ -661,6 +785,7 @@ private fun TopBar(
     onNewChat: () -> Unit,
     onShowOverview: () -> Unit,
     onExport: () -> Unit,
+    onFixateAudio: () -> Unit,
     onDelete: () -> Unit,
     onUpdateTitle: (String) -> Unit
 ) {
@@ -742,6 +867,7 @@ private fun TopBar(
                     enabled = conversation.messageNodes.isNotEmpty(),
                     onShowOverview = onShowOverview,
                     onExport = onExport,
+                    onFixateAudio = onFixateAudio,
                     onDelete = onDelete,
                 )
             }
@@ -791,6 +917,7 @@ private fun ChatPageMenu(
     enabled: Boolean,
     onShowOverview: () -> Unit,
     onExport: () -> Unit,
+    onFixateAudio: () -> Unit,
     onDelete: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -830,20 +957,27 @@ private fun ChatPageMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
         ) {
-            DropdownMenuGroup(shapes = MenuDefaults.groupShape(index = 0, count = 2)) {
+            DropdownMenuGroup(shapes = MenuDefaults.groupShape(index = 0, count = 3)) {
                 MenuItem(
                     text = stringResource(R.string.chat_page_conversation_map),
                     icon = HugeIcons.LeftToRightListBullet,
                     index = 0,
-                    count = 2,
+                    count = 3,
                     onClick = onShowOverview,
                 )
                 MenuItem(
                     text = stringResource(R.string.export_title),
                     icon = HugeIcons.Share04,
                     index = 1,
-                    count = 2,
+                    count = 3,
                     onClick = onExport,
+                )
+                MenuItem(
+                    text = stringResource(R.string.chat_menu_fixate_audio),
+                    icon = HugeIcons.VolumeHigh,
+                    index = 2,
+                    count = 3,
+                    onClick = onFixateAudio,
                 )
             }
             Spacer(Modifier.height(MenuDefaults.GroupSpacing))

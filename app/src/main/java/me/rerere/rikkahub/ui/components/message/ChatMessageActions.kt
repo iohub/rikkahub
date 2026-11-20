@@ -33,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastForEachIndexed
 import kotlinx.coroutines.delay
@@ -115,29 +116,42 @@ fun ColumnScope.ChatMessageActionButtons(
         if (message.role == MessageRole.ASSISTANT) {
             val tts = LocalTTSState.current
             val isSpeaking by tts.isSpeaking.collectAsState()
+            val playbackState by tts.playbackState.collectAsState()
             val isAvailable by tts.isAvailable.collectAsState()
+            val fixedAudio = message.fixedAudio
+            val messageKey = message.id.toString()
+            // isSpeaking 是全局的：正在读别的消息时它也是 true。
+            // 再比一次 messageId 才能只点亮「正在播放的那条消息」，而不是把整屏的播放按钮都变成停止。
+            val isThisMessageSpeaking = isSpeaking && playbackState.messageId == messageKey
             // 朗读中换成带底色的方角按钮
             CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 0.dp) {
                 IconToggleButton(
-                    checked = isSpeaking,
+                    checked = isThisMessageSpeaking,
                     onCheckedChange = { speak ->
                         if (speak) {
-                            val text = message.toText()
-                            var textToSpeak = text
-                            if (settings.displaySetting.ttsOnlyReadQuoted) {
-                                textToSpeak = textToSpeak.extractQuotedContentAsText() ?: textToSpeak
+                            if (fixedAudio != null && fixedAudio.chunkCount > 0) {
+                                // 已固化：全程读本地文件，不再请求服务端（这就是「永久固化」的意义）
+                                tts.speakFixedAudio(message.id, fixedAudio.chunkCount)
+                            } else {
+                                val text = message.toText()
+                                var textToSpeak = text
+                                if (settings.displaySetting.ttsOnlyReadQuoted) {
+                                    textToSpeak = textToSpeak.extractQuotedContentAsText() ?: textToSpeak
+                                }
+                                if (settings.displaySetting.ttsOnlyReadOutsideBrackets) {
+                                    textToSpeak = textToSpeak.removeBracketedContent() ?: textToSpeak
+                                }
+                                // 带上 messageId，播放期间这条消息的按钮才会亮起来
+                                tts.speak(textToSpeak, messageId = messageKey)
                             }
-                            if (settings.displaySetting.ttsOnlyReadOutsideBrackets) {
-                                textToSpeak = textToSpeak.removeBracketedContent() ?: textToSpeak
-                            }
-                            tts.speak(textToSpeak)
                         } else {
                             tts.stop()
                         }
                     },
                     shapes = IconButtonDefaults.toggleableShapes(),
                     modifier = Modifier.size(IconButtonDefaults.extraSmallContainerSize()),
-                    enabled = isAvailable,
+                    // 固化音频是离线的：没有 provider 也能播，所以不该跟 isAvailable 一起被禁用
+                    enabled = isAvailable || fixedAudio != null,
                     colors = IconButtonDefaults.iconToggleButtonColors(
                         contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                         checkedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
@@ -145,7 +159,7 @@ fun ColumnScope.ChatMessageActionButtons(
                     ),
                 ) {
                     Icon(
-                        imageVector = if (isSpeaking) HugeIcons.StopCircle else HugeIcons.VolumeHigh,
+                        imageVector = if (isThisMessageSpeaking) HugeIcons.StopCircle else HugeIcons.VolumeHigh,
                         contentDescription = stringResource(R.string.tts),
                         modifier = Modifier.size(ActionIconSize),
                     )
@@ -265,6 +279,10 @@ fun ChatMessageActionsSheet(
     onSelectAndCopy: () -> Unit,
     isFavorite: Boolean = false,
     onToggleFavorite: (() -> Unit)? = null,
+    // 语音固化三项动作：都是可空回调，未接线的调用点（如预览）不会显示对应菜单项
+    onFixateAudio: (() -> Unit)? = null,
+    onRegenerateAudio: (() -> Unit)? = null,
+    onUnfixateAudio: (() -> Unit)? = null,
     onWebViewPreview: () -> Unit,
     onDismissRequest: () -> Unit
 ) {
@@ -275,6 +293,7 @@ fun ChatMessageActionsSheet(
         // WebView Preview (only show if message has text content)
         val hasTextContent = message.parts.filterIsInstance<UIMessagePart.Text>()
             .any { it.text.isNotBlank() }
+        val fixedAudio = message.fixedAudio
         val actions = buildList {
             add(MessageSheetAction(HugeIcons.TextSelection, stringResource(R.string.select_and_copy), onClick = onSelectAndCopy))
             if (hasTextContent) {
@@ -295,7 +314,56 @@ fun ChatMessageActionsSheet(
                     )
                 )
             }
+            // 语音固化：只对助手消息开放，和行内的播放按钮保持一致（否则固化了却听不到）
+            if (message.role == MessageRole.ASSISTANT && hasTextContent) {
+                if (fixedAudio == null) {
+                    if (onFixateAudio != null) {
+                        add(
+                            MessageSheetAction(
+                                icon = HugeIcons.VolumeHigh,
+                                label = stringResource(R.string.chat_message_fixate_audio),
+                                onClick = onFixateAudio,
+                            )
+                        )
+                    }
+                } else {
+                    if (onRegenerateAudio != null) {
+                        add(
+                            MessageSheetAction(
+                                icon = HugeIcons.Refresh03,
+                                label = stringResource(R.string.chat_message_regenerate_audio),
+                                onClick = onRegenerateAudio,
+                            )
+                        )
+                    }
+                    if (onUnfixateAudio != null) {
+                        add(
+                            MessageSheetAction(
+                                icon = HugeIcons.Delete01,
+                                label = stringResource(R.string.chat_message_unfixate_audio),
+                                destructive = true,
+                                onClick = onUnfixateAudio,
+                            )
+                        )
+                    }
+                }
+            }
             add(MessageSheetAction(HugeIcons.Delete01, stringResource(R.string.delete), destructive = true, onClick = onDelete))
+        }
+
+        // 已固化时在菜单顶部给一行次要信息：段数 + 占用 + 合成时的音色，方便判断要不要重新生成
+        val fixedAudioSummary = fixedAudio?.let { fixed ->
+            val sizeText = String.format(Locale.US, "%.1f MB", fixed.sizeBytes / 1024f / 1024f)
+            val summary = stringResource(
+                R.string.chat_message_fixed_audio_summary,
+                fixed.chunkCount,
+                sizeText,
+            )
+            if (fixed.voice.isNotBlank()) {
+                summary + " · " + stringResource(R.string.chat_message_fixed_audio_voice, fixed.voice)
+            } else {
+                summary
+            }
         }
 
         Column(
@@ -305,6 +373,14 @@ fun ChatMessageActionsSheet(
             verticalArrangement = Arrangement.spacedBy(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            if (fixedAudioSummary != null) {
+                Text(
+                    text = fixedAudioSummary,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                )
+            }
             Column(
                 verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap),
             ) {
