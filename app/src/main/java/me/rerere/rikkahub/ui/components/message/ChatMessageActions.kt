@@ -57,7 +57,7 @@ import me.rerere.hugeicons.stroke.Translate
 import me.rerere.hugeicons.stroke.VolumeHigh
 import me.rerere.hugeicons.stroke.WebDesign01
 import me.rerere.rikkahub.R
-import me.rerere.rikkahub.data.ai.ttsInstruct
+import me.rerere.rikkahub.data.ai.transformers.ttsVoiceInstruct
 import me.rerere.rikkahub.data.model.MessageNode
 import me.rerere.rikkahub.ui.context.LocalSettings
 import me.rerere.rikkahub.ui.context.LocalTTSState
@@ -143,12 +143,13 @@ fun ColumnScope.ChatMessageActionButtons(
                                     textToSpeak = textToSpeak.removeBracketedContent() ?: textToSpeak
                                 }
                                 // 带上 messageId，播放期间这条消息的按钮才会亮起来；
-                                // instruct 沿用这条回复当初的动态语气：缓存键含 instruct，语气一致才能命中同一份音频，
-                                // 否则重播的语气会和工具自动播放时不一样，还会多请求一次服务端
+                                // instruct 沿用这条回复当初的动态语气（`<tts_voice_control>` 块解析出的元数据）：
+                                // 缓存键含 instruct，语气一致才能命中同一份音频，否则重播语气会和自动播放时不一样，
+                                // 还会多请求一次服务端
                                 tts.speak(
                                     textToSpeak,
                                     messageId = messageKey,
-                                    instruct = message.ttsInstruct(),
+                                    instruct = message.ttsVoiceInstruct(),
                                 )
                             }
                         } else {

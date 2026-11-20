@@ -104,9 +104,10 @@ interface CustomTtsState {
      *   传了它之后 UI 才能只高亮「正在播放的那条消息」，而不是把所有消息的播放按钮都点亮；
      *   与具体消息无关的场合（设置页试听、语音模式）留空即可
      * @param instruct 本次朗读的动态语气指令（情绪 / 语速 / 场景，如「excited and fast」）。
-     *   由 `text_to_speech` 工具根据本轮回复的情绪生成，会与设置页配置的静态 instructions 合并后
-     *   一起下发给 provider，并参与音频缓存键（同一文本换语气不会播到旧音频）。
-     *   留空表示只下发静态配置，行为与旧版一致。
+     *   来源是助手回复正文后的 `<tts_voice_control>` 块：由 `TtsVoiceControlTransformer` 从正文里剥离
+     *   并写进 part 元数据，调用方用 `UIMessage.ttsVoiceInstruct()` 取回。它会与设置页配置的静态
+     *   instructions 合并后一起下发给 provider，并参与音频缓存键（同一文本换语气不会播到旧音频）。
+     *   留空表示只下发静态配置（没有控制块的历史消息就是这种情况，行为与旧版一致）。
      */
     fun speak(
         text: String,
@@ -133,8 +134,9 @@ interface CustomTtsState {
      * @param text 消息原文。Markdown 清洗与「只读引号内 / 只读括号外」两项设置由本方法自己按
      *   [speak] 调用点同样的顺序处理，调用方直接传 `message.toText()` 即可
      * @param forceRegenerate true = 重新生成：合成时跳过音频缓存、强制请求服务端
-     * @param instruct 这条回复当初的动态语气（调用方传 `message.ttsInstruct()`）。音频缓存键包含它，
-     *   沿用同一个值才能命中工具播放时已经缓存过的音频，固化下来的语气也和当时听到的一致；
+     * @param instruct 这条回复当初的动态语气（调用方传 `message.ttsVoiceInstruct()`，即回复里
+     *   `<tts_voice_control>` 块解析出的 part 元数据）。音频缓存键包含它，沿用同一个值才能命中
+     *   播放时已经缓存过的音频，固化下来的语气也和当时听到的一致；
      *   留空表示「只用设置里的静态配置」，行为与旧版相同
      */
     suspend fun fixateMessageAudio(
@@ -204,7 +206,7 @@ private class CustomTtsStateImpl(
     override fun speak(text: String, flushCalled: Boolean, messageId: String?, instruct: String) {
         val processed = text.stripMarkdown()
         // messageId 只是给 PlaybackState 打标，让 UI 能只高亮「正在播放的那条消息」
-        // instruct 是模型本轮生成的动态语气，由 controller 与静态配置合并后下发（并参与缓存键）
+        // instruct 是本轮回复里 `<tts_voice_control>` 块解析出的动态语气，由 controller 与静态配置合并后下发（并参与缓存键）
         controller.speak(processed, flushCalled, messageId, instruct)
     }
 

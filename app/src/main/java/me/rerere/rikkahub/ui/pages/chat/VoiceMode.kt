@@ -23,7 +23,7 @@ import me.rerere.asr.providers.DashScopeASRController
 import me.rerere.asr.providers.OpenAIRealtimeASRController
 import me.rerere.asr.providers.VolcengineASRController
 import me.rerere.rikkahub.R
-import me.rerere.rikkahub.data.ai.hasTtsToolCall
+import me.rerere.rikkahub.data.ai.transformers.ttsVoiceInstruct
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.getSelectedASRProvider
 import me.rerere.rikkahub.data.datastore.getSelectedTTSProvider
@@ -65,14 +65,6 @@ fun rememberVoiceModeStarter(vm: ChatVM, settings: Settings): () -> Unit {
         }
     }
 
-    // 语音轮的 speak 回调只拿得到文本：助手消息本身已经在会话状态里（回复文本就是 runTurn 结束后
-    // 从 session.state 的 currentMessages 取出来再 complete 的），所以能回查「本轮回复有没有调用过
-    // text_to_speech」。这里读的是调用时刻的最新状态，不会拿到 start() 那一刻的旧快照。
-    val replySpokeViaTtsTool: () -> Boolean = {
-        vm.conversation.value.currentMessages
-            .lastOrNull { it.role == MessageRole.ASSISTANT }
-            ?.hasTtsToolCall() == true
-    }
     // playbackState.Ended 分片之间也会发一次；isSpeaking 直到整个合成/播放队列结束才变 false
     val awaitSpeechFinished: suspend () -> Unit = {
         combine(tts.isSpeaking, tts.error) { speaking, error ->
@@ -111,15 +103,16 @@ fun rememberVoiceModeStarter(vm: ChatVM, settings: Settings): () -> Unit {
                         // tts.speak() strips markdown itself; stripping twice would turn decoded
                         // entities like &lt;tag&gt; into real tags and drop them.
                         if (text.stripMarkdown().isNotBlank()) {
-                            // 本轮回复自己调用过 text_to_speech：音频已经由工具触发播放，而且带着模型
-                            // 为本轮生成的动态语气。这里再 speak 会把那段播放打断、从头再念一遍，
-                            // 所以只等它播完，交给下面的麦克风暂停逻辑
-                            if (replySpokeViaTtsTool()) {
-                                awaitSpeechFinished()
-                            } else {
-                                tts.speak(text)
-                                awaitSpeechFinished()
-                            }
+                            // 动态语气取自本轮回复的 `<tts_voice_control>` 元数据：语音轮的回复同样是助手消息，
+                            // 和手动播放 / 自动朗读 / 固化读的是同一份语气，缓存键才对得上。
+                            // speak 回调只拿得到文本，消息本身已在会话状态里（runTurn 结束后由 currentMessages
+                            // 取出），所以这里按调用时刻的最新一条助手消息回查。
+                            val voiceInstruct = vm.conversation.value.currentMessages
+                                .lastOrNull { it.role == MessageRole.ASSISTANT }
+                                ?.ttsVoiceInstruct()
+                                .orEmpty()
+                            tts.speak(text, instruct = voiceInstruct)
+                            awaitSpeechFinished()
                         }
                     }
                 } else {

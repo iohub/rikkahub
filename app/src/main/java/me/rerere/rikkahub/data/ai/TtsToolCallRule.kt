@@ -77,8 +77,7 @@ internal fun missingTtsToolCallResult(reply: UIMessage): ReplyReviewResult? {
  * 这条消息里是否有**有效**的 `text_to_speech` 调用。
  *
  * 只看「模型有没有发起调用」，**不看执行状态**：工具还没执行完（output 为空）、执行报错都算调用过 ——
- * 这条规则约束的是模型的调用义务，执行与否不归模型决定。UI 侧（自动朗读 / 预取 / 语音模式）
- * 也用它判断「音频已经由工具负责，别再从 UI 播一遍」。
+ * 这条规则约束的是模型的调用义务，执行与否不归模型决定。
  *
  * 但 `text` 必须非空白：模型偶尔会传空串，那种调用念不出任何东西（静默无声），
  * 算「有效调用」会让规则误放行。参数解析失败（空 input / 非法 JSON）同样视为没有有效调用。
@@ -91,8 +90,12 @@ internal fun UIMessage.hasTtsToolCall(): Boolean =
 /**
  * 这条回复当初调用 `text_to_speech` 时模型生成的动态语气指令。
  *
- * 手动重播 / 固化音频要沿用它：音频缓存键（`TtsAudioCache.buildKey`）把 instruct 算进去了，
- * 语气一致才能命中同一份音频，用户点播放听到的语气也才和工具自动播放时一样。
+ * **已由 `<tts_voice_control>` 取代**：播放 / 预取 / 固化 / 语音模式现在都读
+ * `UIMessage.ttsVoiceInstruct()`（见 `data/ai/transformers/TtsVoiceControlTransformer.kt`），
+ * 本函数只剩兼容旧消息的读取逻辑，随 `text_to_speech` 工具一起删除。
+ *
+ * 旧版重播 / 固化音频曾沿用它（音频缓存键 `TtsAudioCache.buildKey` 把 instruct 算进去了），
+ * 这条语义现在由 `ttsVoiceInstruct()` 承担，这里保留只是为了让旧消息的读取路径完整。
  *
  * 取**最后一次**调用：一轮里多次调用时，后一次 `speak(flush = true)` 会打断前一次的播放，
  * 用户实际听到的就是最后一次的语气（提示词也已要求每轮只调用一次，这里只是兜底）。

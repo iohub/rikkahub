@@ -5,7 +5,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
 import me.rerere.ai.core.MessageRole
-import me.rerere.rikkahub.data.ai.hasTtsToolCall
+import me.rerere.rikkahub.data.ai.transformers.ttsVoiceInstruct
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.ui.context.LocalTTSState
@@ -26,9 +26,6 @@ fun TTSAutoPlay(vm: ChatVM, setting: Settings, conversation: Conversation) {
             ) {
                 val lastMessage = currentConversation.currentMessages.lastOrNull()
                 if (lastMessage != null && lastMessage.role == MessageRole.ASSISTANT) {
-                    // 本轮回复已调用 text_to_speech：音频由工具负责播放（且带模型为本轮生成的动态语气）。
-                    // 这里再 speak 一次会从头重放同一段话，等于把工具那次播放打断，所以直接跳过
-                    if (lastMessage.hasTtsToolCall()) return@collect
                     val text = lastMessage.toText()
                     var textToSpeak = text
                     if (updatedSetting.displaySetting.ttsOnlyReadQuoted) {
@@ -38,8 +35,14 @@ fun TTSAutoPlay(vm: ChatVM, setting: Settings, conversation: Conversation) {
                         textToSpeak = textToSpeak.removeBracketedContent() ?: textToSpeak
                     }
                     if (textToSpeak.isNotBlank()) {
-                        // 带上 messageId：自动朗读期间这条消息的播放按钮也会高亮，与手动点播放一致
-                        tts.speak(textToSpeak, messageId = lastMessage.id.toString())
+                        // 带上 messageId：自动朗读期间这条消息的播放按钮也会高亮，与手动点播放一致。
+                        // instruct 是本轮回复 `<tts_voice_control>` 块解析出的动态语气（由 transformer 写进 part 元数据），
+                        // 手动播放 / 预取 / 固化都读同一份，语气才会前后一致、缓存键也才对得上
+                        tts.speak(
+                            textToSpeak,
+                            messageId = lastMessage.id.toString(),
+                            instruct = lastMessage.ttsVoiceInstruct(),
+                        )
                     }
                 }
             }
