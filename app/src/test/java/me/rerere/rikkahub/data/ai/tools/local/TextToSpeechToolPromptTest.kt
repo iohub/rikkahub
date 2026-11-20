@@ -25,11 +25,19 @@ class TextToSpeechToolPromptTest {
     }
 
     @Test
-    fun `rules carry at least five balanced examples`() {
+    fun `rules carry at least six balanced examples`() {
         val open = countOccurrences(TEXT_TO_SPEECH_RULES, "<example>")
         val close = countOccurrences(TEXT_TO_SPEECH_RULES, "</example>")
         assertEquals("每个 <example> 都必须配一个 </example>", open, close)
-        assertTrue("示例少于 5 个时 few-shot 效果明显变差，实际 $open 个", open >= 5)
+        // 1 组英文 + 5 组中文：只有中文示例时，英文对话里模型容易把 text 也写成中文
+        assertTrue("示例少于 6 个时 few-shot 效果明显变差，实际 $open 个", open >= 6)
+    }
+
+    @Test
+    fun `rules include an english example`() {
+        // 纯英文示例在示例区最前面：示例全是中文时，英文对话里模型容易把 text 也写成中文
+        assertTrue(TEXT_TO_SPEECH_RULES.contains("My flight got cancelled"))
+        assertTrue(TEXT_TO_SPEECH_RULES.contains("calm, supportive, slightly slower, practical"))
     }
 
     @Test
@@ -61,6 +69,13 @@ class TextToSpeechToolPromptTest {
     @Test
     fun `rules specify the language to write instruct in`() {
         assertTrue(TEXT_TO_SPEECH_RULES.contains("Chinese"))
+    }
+
+    @Test
+    fun `rules keep the speech language aligned with the reply`() {
+        // text 的语言必须跟随回复语言，否则英文对话会被中文示例带偏
+        assertTrue(TEXT_TO_SPEECH_RULES.contains("Chinese reply ->"))
+        assertTrue(TEXT_TO_SPEECH_RULES.contains("Never translate the reply into another language"))
     }
 
     @Test

@@ -38,7 +38,10 @@ internal val TEXT_TO_SPEECH_RULES = """
          link syntax, code fences;
        - drop emoji and kaomoji;
        - spell out what a person would say out loud: "42ms" -> "forty-two milliseconds",
-         "v2.1" -> "version two point one", "3 台" -> "三台".
+         "v2.1" -> "version two point one", "3 台" -> "三台";
+       - keep `text` in the language of your reply: English reply -> English speech, Chinese reply ->
+         Chinese speech. Never translate the reply into another language because of the examples below;
+         the examples only demonstrate the parameter shape.
     3. Merge the whole reply into ONE `text`. Never call this tool twice in the same reply: the second
        call cuts off the playback of the first one, so only the last part is actually heard.
     4. `instruct` is the delivery direction YOU invent for THIS reply from its emotion, energy, pacing
@@ -58,6 +61,14 @@ internal val TEXT_TO_SPEECH_RULES = """
        tone of the written reply.
 
     ### Worked examples
+
+    <example>
+    User: My flight got cancelled and I'm stuck at the airport.
+    Your reply: That's rough. Let me check the next available flight and rebook you on something tonight.
+    Tool call:
+      text: "That's rough. Let me check the next available flight and rebook you on something tonight."
+      instruct: "calm, supportive, slightly slower, practical"
+    </example>
 
     <example>
     User: 今天面试挂了，好难受。
