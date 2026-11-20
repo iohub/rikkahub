@@ -332,6 +332,55 @@ object ClipboardToolUI : ToolUIRenderer {
 }
 
 /**
+ * 「原始日志」里 TTS 特有的补充字段。
+ *
+ * 三个 instruct 值必须同屏才解释得清「这一轮为什么是这个语气」：
+ * - `staticInstructions`：设置页里配置的静态语气，对整个 provider 生效；
+ * - `dynamicInstruct`：模型这次通过工具参数给的动态语气，只对这一条回复生效；
+ * - `mergedInstructions`：两者按 provider 规则合并后**真正下发**的值（见 `mergedInstructionsFor`），
+ *   为 JSON null 表示该 provider 不消费 instruct（如 OpenAI / 系统 TTS），
+ *   为空串表示消费但这次没有内容可下发（请求体里连键都不写）。
+ *
+ * @param provider 当前选中的 TTS provider，为 null 时说明一个都没配置
+ */
+internal fun buildTtsRawLogExtra(
+    provider: TTSProviderSetting?,
+    dynamicInstruct: String,
+): JsonObject = buildJsonObject {
+    if (provider == null) {
+        // 没配置 provider 时请求根本发不出去，用 none 明确区分「没配」与「配了但不支持 instruct」
+        put("provider", "none")
+        put("staticInstructions", "")
+        put("dynamicInstruct", dynamicInstruct)
+        put("mergedInstructions", JsonNull)
+        return@buildJsonObject
+    }
+    put("provider", provider.javaClass.simpleName)
+    put("staticInstructions", provider.staticTtsInstructions())
+    put("dynamicInstruct", dynamicInstruct)
+    val merged = provider.mergedInstructionsFor(dynamicInstruct)
+    if (merged == null) put("mergedInstructions", JsonNull) else put("mergedInstructions", merged)
+}
+
+/** 设置页里配置的静态语气；不消费 instruct 的 provider 返回空串 */
+private fun TTSProviderSetting.staticTtsInstructions(): String = when (this) {
+    is TTSProviderSetting.RemoteTTS -> instructions
+    is TTSProviderSetting.Step -> instruction
+    else -> ""
+}
+
+/** 取当前设置里的 TTS provider 与本轮的动态语气，拼成「原始日志」的补充字段 */
+@Composable
+private fun rememberTtsRawLogExtra(context: ToolUIContext): JsonObject {
+    val settings = LocalSettings.current
+    val provider = settings.getSelectedTTSProvider()
+    val dynamicInstruct = context.arguments.getStringContent("instruct").orEmpty()
+    return remember(provider, dynamicInstruct) {
+        buildTtsRawLogExtra(provider, dynamicInstruct)
+    }
+}
+
+/**
  * 文本转语音: 摘要显示朗读文本与重播按钮
  */
 object TextToSpeechToolUI : ToolUIRenderer {
@@ -485,6 +534,11 @@ object TextToSpeechToolUI : ToolUIRenderer {
                     Text(stringResource(R.string.tool_ui_tts_close))
                 }
             }
+            // 调试逃生口：默认收起，想查原始入参/输出与三段语气时才展开
+            ToolRawLogSection(
+                context = context,
+                extra = rememberTtsRawLogExtra(context),
+            )
         }
     }
 }
