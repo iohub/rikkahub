@@ -58,8 +58,7 @@ private val RAW_LOG_MAX_HEIGHT = 420.dp
  * 默认收起, 不点开就与改动前的界面完全一致, 所以不需要额外的开发者模式开关。
  *
  * 本组件对所有工具通用: 任何一个 [ToolUIRenderer] 只要在 `Preview` 尾部加一行
- * `ToolRawLogSection(context = context)` 就能获得这个入口; 工具特有的补充信息(例如 TTS 的
- * 静态/动态/合并语气)用 [extra] 并入顶层即可。
+ * `ToolRawLogSection(context = context)` 就能获得这个入口; 工具特有的补充信息用 [extra] 并入顶层即可。
  *
  * @param extra 额外并入日志顶层的键值, 为 null 时不加任何键
  * @param initiallyExpanded 用于「从摘要行直接弹出的独立日志面板」: 打开即展开, 且不渲染那条

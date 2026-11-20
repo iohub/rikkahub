@@ -127,8 +127,8 @@ class MiMoTTSProvider : TTSProvider<TTSProviderSetting.MiMo> {
     // 官方文档: https://xiaomimimo.com (音频标签控制)
     override val promptGuidance: String = """
         The active text-to-speech engine (MiMo) supports emotion and style control via embedded tags.
-        When you call the text_to_speech tool, you MAY enrich the "text" argument with these tags to make the speech more expressive.
-        Put tags ONLY inside the tool's text argument — never in your visible reply to the user.
+        This engine reads your visible reply body, so the tags MUST be written directly inside your reply body to make the speech more expressive.
+        Put tags ONLY in the reply body — never inside the tts_voice_control block: that block is an out-of-band voice description, it gets stripped before synthesis and never reaches this engine.
 
         Two kinds of tags:
         1. Overall style tag — place ONE at the very beginning of the text: (style) . Combine multiple styles with spaces inside the same brackets, e.g. (开心 磁性) . Brackets may be () , （） or [] .
@@ -142,7 +142,7 @@ class MiMoTTSProvider : TTSProvider<TTSProviderSetting.MiMo> {
         - Do not use markdown emphasis (*, _) — it will be stripped.
         - Use tags naturally and sparingly; don't over-annotate.
 
-        Example text argument: (磁性)夜已经深了[叹气]城市还在呼吸。我是今晚陪你的人。
+        Example reply body: (磁性)夜已经深了[叹气]城市还在呼吸。我是今晚陪你的人。
     """.trimIndent()
 
     override fun generateSpeech(

@@ -7,12 +7,10 @@ import me.rerere.rikkahub.data.event.AppEventBus
 import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.phoneuse.PhoneUseManager
 import me.rerere.rikkahub.phoneuse.isFloatingChatWindowOn
-import me.rerere.tts.provider.TTSManager
 
 class LocalTools(
     private val context: Context,
     private val eventBus: AppEventBus,
-    private val ttsManager: TTSManager,
     private val settingsStore: SettingsStore,
     private val phoneUseManager: PhoneUseManager,
     private val filesManager: FilesManager,
@@ -22,8 +20,6 @@ class LocalTools(
     val timeTool by lazy { buildTimeInfoTool() }
 
     val clipboardTool by lazy { buildClipboardTool(context) }
-
-    val ttsTool by lazy { buildTextToSpeechTool(eventBus, ttsManager, settingsStore) }
 
     val askUserTool by lazy { buildAskUserTool() }
 
@@ -60,9 +56,6 @@ class LocalTools(
         }
         if (options.contains(LocalToolOption.Clipboard)) {
             tools.add(clipboardTool)
-        }
-        if (options.contains(LocalToolOption.Tts)) {
-            tools.add(ttsTool)
         }
         if (options.contains(LocalToolOption.AskUser)) {
             tools.add(askUserTool)

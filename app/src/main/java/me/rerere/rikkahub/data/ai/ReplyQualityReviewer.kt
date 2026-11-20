@@ -52,34 +52,14 @@ class ReplyQualityReviewer(
     private val usageRecorder: UsageRecorder,
 ) {
     /**
-     * 确定性规则入口：本轮把 `text_to_speech` 交给了模型时，回复必须真的调用过它。
-     *
-     * 不发起模型请求、不读设置、不会超时也不会 fail-open —— 判定只看本地工具调用记录，
-     * 所以调用方可以让它绕过 [Settings.reviewerSetting] 的总开关单独生效。
-     *
-     * 判定细节见 [findMissingTtsToolCall]：回复里已有**执行过**的其它工具时放行（避免重生成重跑副作用），
-     * `text` 参数为空白则视为没有有效调用。
-     *
-     * @return 命中违规时返回不通过结论，通过时返回 null
-     */
-    fun enforceTtsToolCall(reply: UIMessage): ReplyReviewResult? = missingTtsToolCallResult(reply)
-
-    /**
      * 审查最后一条 assistant 回复；任何异常/超时都 fail-open（passed=true）
-     *
-     * @param ttsRequired 本轮是否「必须调用 text_to_speech」（见 [enforceTtsToolCall]）。
-     *   为 true 时在**最开头**先跑硬规则，早于空文本 fail-open —— 纯工具调用没有正文的回复
-     *   不能被「空回复放行」吞掉，否则漏调 TTS 永远判不出来
      */
     suspend fun review(
         settings: Settings,
         conversation: Conversation,
         reply: UIMessage,
         historyLimit: Int = 6,
-        ttsRequired: Boolean = false,
     ): ReplyReviewResult {
-        if (ttsRequired) enforceTtsToolCall(reply)?.let { return it }
-
         val replyText = reply.toText().trim()
         if (replyText.isEmpty()) return failOpen("empty reply")
 

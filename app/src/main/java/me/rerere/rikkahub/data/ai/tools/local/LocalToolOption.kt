@@ -17,6 +17,12 @@ sealed class LocalToolOption {
     @SerialName("clipboard")
     data object Clipboard : LocalToolOption()
 
+    /**
+     * 开启后不注册任何工具，只让系统提示词注入 `<tts_voice_control>` 语气控制规范。
+     *
+     * 旧的 `text_to_speech` 工具已废弃，保留该枚举值仅为兼容历史数据：已安装用户的 DataStore 里
+     * 存着 `{"type":"tts"}`，删掉这个子类会让 `ASSISTANTS` 反序列化失败。
+     */
     @Serializable
     @SerialName("tts")
     data object Tts : LocalToolOption()

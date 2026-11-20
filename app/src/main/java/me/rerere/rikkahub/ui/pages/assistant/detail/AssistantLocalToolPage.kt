@@ -232,11 +232,12 @@ private fun AssistantLocalToolContent(
                 title = R.string.assistant_page_local_tools_clipboard_title,
                 description = R.string.assistant_page_local_tools_clipboard_desc,
             )
+            // 语义已变成「让模型用 `<tts_voice_control>` 块描述朗读语气」，不再注册任何工具
             toolItem(
                 option = LocalToolOption.Tts,
                 icon = HugeIcons.VolumeHigh,
-                title = R.string.assistant_page_local_tools_tts_title,
-                description = R.string.assistant_page_local_tools_tts_desc,
+                title = R.string.assistant_page_local_tools_tts_voice_control_title,
+                description = R.string.assistant_page_local_tools_tts_voice_control_desc,
             )
             toolItem(
                 option = LocalToolOption.AskUser,

@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -15,27 +14,16 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -48,18 +36,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.fastForEach
 import coil3.compose.AsyncImage
-import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonNull
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
-import kotlinx.serialization.json.put
 import me.rerere.common.http.jsonObjectOrNull
 import me.rerere.rikkahub.ui.components.richtext.CodeHighlightText
 import me.rerere.hugeicons.HugeIcons
@@ -69,42 +52,30 @@ import me.rerere.hugeicons.stroke.ChartColumn
 import me.rerere.hugeicons.stroke.ChartLineData01
 import me.rerere.hugeicons.stroke.ChartScatter
 import me.rerere.hugeicons.stroke.Clipboard
-import me.rerere.hugeicons.stroke.Code
 import me.rerere.hugeicons.stroke.Eraser
 import me.rerere.hugeicons.stroke.GlobalSearch
 import me.rerere.hugeicons.stroke.MagicWand01
 import me.rerere.hugeicons.stroke.Message02
 import me.rerere.hugeicons.stroke.QuillWrite01
-import me.rerere.hugeicons.stroke.Refresh01
 import me.rerere.hugeicons.stroke.Search01
 import me.rerere.hugeicons.stroke.Calendar03
 import me.rerere.hugeicons.stroke.CalendarAdd01
 import me.rerere.hugeicons.stroke.SmartPhone01
 import me.rerere.hugeicons.stroke.Time02
-import me.rerere.hugeicons.stroke.VolumeHigh
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.data.ai.tools.MemoryToolNames
-import me.rerere.rikkahub.data.ai.tools.local.TEXT_TO_SPEECH_TOOL_NAME
-import me.rerere.rikkahub.data.datastore.getSelectedTTSProvider
-import me.rerere.rikkahub.data.event.AppEvent
-import me.rerere.rikkahub.data.event.AppEventBus
 import me.rerere.rikkahub.data.repository.MemoryRepository
 import me.rerere.rikkahub.data.repository.memoryId
 import me.rerere.rikkahub.ui.components.richtext.MarkdownBlock
 import me.rerere.rikkahub.ui.components.ui.Favicon
 import me.rerere.rikkahub.ui.components.ui.FaviconRow
 import me.rerere.rikkahub.ui.context.LocalNavController
-import me.rerere.rikkahub.ui.context.LocalSettings
 import me.rerere.rikkahub.ui.modifier.shimmer
 import me.rerere.rikkahub.utils.JsonInstantPretty
 import me.rerere.rikkahub.utils.jsonPrimitiveOrNull
 import me.rerere.rikkahub.utils.openUrl
 import me.rerere.rikkahub.utils.toLocalString
-import me.rerere.tts.model.mergedInstructionsFor
-import me.rerere.tts.provider.TTSProviderSetting
-import me.rerere.ui.components.FormItem
-import org.koin.compose.koinInject
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
@@ -342,248 +313,6 @@ object ClipboardToolUI : ToolUIRenderer {
             ACTION_WRITE -> stringResource(R.string.chat_message_tool_clipboard_write)
             else -> stringResource(R.string.chat_message_tool_call_generic, toolName)
         }
-}
-
-/**
- * 「原始日志」里 TTS 特有的补充字段。
- *
- * 三个 instruct 值必须同屏才解释得清「这一轮为什么是这个语气」：
- * - `staticInstructions`：设置页里配置的静态语气，对整个 provider 生效；
- * - `dynamicInstruct`：模型这次通过工具参数给的动态语气，只对这一条回复生效；
- * - `mergedInstructions`：两者按 provider 规则合并后**真正下发**的值（见 `mergedInstructionsFor`），
- *   为 JSON null 表示该 provider 不消费 instruct（如 OpenAI / 系统 TTS），
- *   为空串表示消费但这次没有内容可下发（请求体里连键都不写）。
- *
- * @param provider 当前选中的 TTS provider，为 null 时说明一个都没配置
- */
-internal fun buildTtsRawLogExtra(
-    provider: TTSProviderSetting?,
-    dynamicInstruct: String,
-): JsonObject = buildJsonObject {
-    if (provider == null) {
-        // 没配置 provider 时请求根本发不出去，用 none 明确区分「没配」与「配了但不支持 instruct」
-        put("provider", "none")
-        put("staticInstructions", "")
-        put("dynamicInstruct", dynamicInstruct)
-        put("mergedInstructions", JsonNull)
-        return@buildJsonObject
-    }
-    put("provider", provider.javaClass.simpleName)
-    put("staticInstructions", provider.staticTtsInstructions())
-    put("dynamicInstruct", dynamicInstruct)
-    val merged = provider.mergedInstructionsFor(dynamicInstruct)
-    if (merged == null) put("mergedInstructions", JsonNull) else put("mergedInstructions", merged)
-}
-
-/** 设置页里配置的静态语气；不消费 instruct 的 provider 返回空串 */
-private fun TTSProviderSetting.staticTtsInstructions(): String = when (this) {
-    is TTSProviderSetting.RemoteTTS -> instructions
-    is TTSProviderSetting.Step -> instruction
-    else -> ""
-}
-
-/** 取当前设置里的 TTS provider 与本轮的动态语气，拼成「原始日志」的补充字段 */
-@Composable
-private fun rememberTtsRawLogExtra(context: ToolUIContext): JsonObject {
-    val settings = LocalSettings.current
-    val provider = settings.getSelectedTTSProvider()
-    val dynamicInstruct = context.arguments.getStringContent("instruct").orEmpty()
-    return remember(provider, dynamicInstruct) {
-        buildTtsRawLogExtra(provider, dynamicInstruct)
-    }
-}
-
-/**
- * 文本转语音: 摘要显示朗读文本与重播按钮
- */
-object TextToSpeechToolUI : ToolUIRenderer {
-    override val toolName: String = TEXT_TO_SPEECH_TOOL_NAME
-
-    override fun icon(context: ToolUIContext): ImageVector = HugeIcons.VolumeHigh
-
-    @Composable
-    override fun title(context: ToolUIContext): String {
-        val preview = context.arguments.getStringContent("text")?.let { text ->
-            if (text.length > 24) text.take(24) + "…" else text
-        } ?: ""
-        return stringResource(R.string.tool_ui_speaking, preview)
-    }
-
-    override fun hasSummary(context: ToolUIContext): Boolean =
-        context.arguments.getStringContent("text") != null
-
-    @Composable
-    override fun Summary(context: ToolUIContext) {
-        val eventBus: AppEventBus = koinInject()
-        val scope = rememberCoroutineScope()
-        val text = context.arguments.getStringContent("text") ?: ""
-        // 模型为本轮生成的动态语气（情绪/语速/场景）；旧消息没有这个参数，留空则整行不渲染
-        val instruct = context.arguments.getStringContent("instruct").orEmpty()
-        // 摘要行的显式日志入口：点标题行也能开详情，但没人猜得到，这里给一个明说的按钮
-        var showRawLog by remember { mutableStateOf(false) }
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Text(
-                    text = text,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
-                FilledTonalIconButton(
-                    // 重播沿用同一条动态语气：否则听到的和当初那次不一样，也命中不了按语气区分的缓存
-                    onClick = { scope.launch { eventBus.emit(AppEvent.Speak(text, instruct)) } },
-                    modifier = Modifier.size(28.dp),
-                ) {
-                    Icon(
-                        imageVector = HugeIcons.Refresh01,
-                        contentDescription = stringResource(R.string.tool_ui_replay),
-                        modifier = Modifier.size(14.dp),
-                    )
-                }
-                FilledTonalIconButton(
-                    // 显式入口，点了直接弹原始日志面板，不依赖「点标题行」这个隐藏交互
-                    onClick = { showRawLog = true },
-                    modifier = Modifier.size(28.dp),
-                ) {
-                    Icon(
-                        imageVector = HugeIcons.Code,
-                        contentDescription = stringResource(R.string.tool_raw_log_toggle),
-                        modifier = Modifier.size(14.dp),
-                    )
-                }
-            }
-            if (instruct.isNotBlank()) {
-                // 前缀本地化标签: 否则中文用户不知道这串英文描述词是"语气"
-                Text(
-                    text = stringResource(R.string.tool_ui_tts_instruct_label) + " · " +
-                        (if (instruct.length > 40) instruct.take(40) + "…" else instruct),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-        }
-        // 独立日志面板: 摘要行点按钮直接弹出, 不再依赖「点标题行 → 详情 → 展开原始日志」三步
-        if (showRawLog) {
-            ModalBottomSheet(onDismissRequest = { showRawLog = false }) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxHeight(0.8f)
-                        .padding(16.dp)
-                        .verticalScroll(rememberScrollState()),
-                ) {
-                    ToolRawLogSection(
-                        context = context,
-                        extra = rememberTtsRawLogExtra(context),
-                        initiallyExpanded = true,
-                    )
-                }
-            }
-        }
-    }
-
-    /**
-     * 详情页: 只展示朗读文本与语气, 不把工具入参/输出的原始 JSON 暴露给用户
-     */
-    @Composable
-    override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
-        val eventBus: AppEventBus = koinInject()
-        val scope = rememberCoroutineScope()
-        val text = context.arguments.getStringContent("text").orEmpty()
-        // 旧消息没有 instruct 参数, 留空时提示"未指定"而不是留白
-        val instruct = context.arguments.getStringContent("instruct").orEmpty()
-        val displayText = if (text.isBlank()) {
-            stringResource(R.string.tool_ui_tts_text_empty)
-        } else {
-            text
-        }
-
-        Column(
-            modifier = Modifier
-                .fillMaxHeight(0.8f)
-                .padding(16.dp)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            Text(
-                text = stringResource(R.string.tool_ui_tts_preview_title),
-                style = MaterialTheme.typography.headlineSmall,
-            )
-            FormItem(
-                label = { Text(stringResource(R.string.tool_ui_tts_text_label)) },
-            ) {
-                SelectionContainer {
-                    Text(
-                        text = displayText,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (text.isBlank()) {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        } else {
-                            MaterialTheme.colorScheme.onSurface
-                        },
-                    )
-                }
-            }
-            FormItem(
-                label = { Text(stringResource(R.string.tool_ui_tts_instruct_label)) },
-            ) {
-                Text(
-                    text = if (instruct.isBlank()) {
-                        stringResource(R.string.tool_ui_tts_instruct_empty)
-                    } else {
-                        instruct
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (instruct.isBlank()) {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    } else {
-                        MaterialTheme.colorScheme.onSurface
-                    },
-                )
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                FilledTonalButton(
-                    // 重播沿用同一条动态语气, 与 Summary 内的按钮行为保持一致
-                    onClick = {
-                        scope.launch { eventBus.emit(AppEvent.Speak(text, instruct)) }
-                        onDismissRequest()
-                    },
-                    enabled = text.isNotBlank(),
-                ) {
-                    Icon(
-                        imageVector = HugeIcons.Refresh01,
-                        contentDescription = null,
-                        modifier = Modifier.size(14.dp),
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(stringResource(R.string.tool_ui_replay))
-                }
-                TextButton(onClick = onDismissRequest) {
-                    Text(stringResource(R.string.tool_ui_tts_close))
-                }
-            }
-            // 调试逃生口：默认收起，想查原始入参/输出与三段语气时才展开
-            ToolRawLogSection(
-                context = context,
-                extra = rememberTtsRawLogExtra(context),
-            )
-        }
-    }
 }
 
 /**

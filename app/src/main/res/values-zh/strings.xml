@@ -119,6 +119,8 @@
   <string name="assistant_page_local_tools_time_info_title">时间信息</string>
   <string name="assistant_page_local_tools_tts_desc">让AI使用您所选的TTS服务为您朗读文本</string>
   <string name="assistant_page_local_tools_tts_title">文字转语音</string>
+  <string name="assistant_page_local_tools_tts_voice_control_desc">让模型在回复末尾用 &lt;tts_voice_control&gt; 描述朗读语气；不再调用工具</string>
+  <string name="assistant_page_local_tools_tts_voice_control_title">语音语气控制</string>
   <string name="assistant_page_manage_memory_title">管理记忆</string>
   <string name="assistant_page_max_tokens">最大Token数</string>
   <string name="assistant_page_max_tokens_desc">最大生成Token数量。留空表示无限制。</string>

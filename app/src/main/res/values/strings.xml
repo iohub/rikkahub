@@ -119,6 +119,8 @@
   <string name="assistant_page_local_tools_time_info_title">Time Info</string>
   <string name="assistant_page_local_tools_tts_desc">Let the AI read text aloud to you using your selected TTS service</string>
   <string name="assistant_page_local_tools_tts_title">Text to Speech</string>
+  <string name="assistant_page_local_tools_tts_voice_control_desc">Let the model describe how this reply should be read in a &lt;tts_voice_control&gt; block at the end of the reply. No tool call is involved.</string>
+  <string name="assistant_page_local_tools_tts_voice_control_title">Voice Tone Control</string>
   <string name="assistant_page_manage_memory_title">Manage Memory</string>
   <string name="assistant_page_max_tokens">Max Tokens</string>
   <string name="assistant_page_max_tokens_desc">Maximum number of tokens to generate. Leave empty for no limit.</string>

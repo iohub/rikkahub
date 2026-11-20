@@ -28,7 +28,7 @@ class ToolRawLogJsonTest {
     fun `executed tool keeps every raw field`() {
         val json = buildToolRawLogJson(tool())
 
-        assertEquals("text_to_speech", json.string("toolName"))
+        assertEquals("chart_display", json.string("toolName"))
         assertEquals("call_1", json.string("toolCallId"))
         assertEquals("auto", json.string("approvalState"))
         assertEquals("executed", json.string("status"))
@@ -148,7 +148,7 @@ class ToolRawLogJsonTest {
         finishedAt: Instant? = FINISHED_AT,
     ) = UIMessagePart.Tool(
         toolCallId = "call_1",
-        toolName = "text_to_speech",
+        toolName = "chart_display",
         input = input,
         output = output,
         approvalState = approvalState,
@@ -160,8 +160,8 @@ class ToolRawLogJsonTest {
     private fun JsonObject.string(key: String): String? = this[key]?.jsonPrimitive?.content
 
     private companion object {
-        const val INPUT = """{"text":"你好","instruct":"calm"}"""
-        const val OUTPUT = """{"success":true,"instruct":"calm"}"""
+        const val INPUT = """{"title":"你好","type":"line"}"""
+        const val OUTPUT = """{"success":true}"""
         val STARTED_AT: Instant = Instant.parse("2026-01-01T00:00:00Z")
         val FINISHED_AT: Instant = STARTED_AT + 1500.milliseconds
     }
