@@ -37,6 +37,15 @@ private const val MAX_SCORE = 100
 private const val MIN_VOICE_INSTRUCT_WORDS = 5
 
 /**
+ * 正文有效字符数不超过这个值时，「必须有块」这条不生效。
+ *
+ * 注入给模型的规范（[TtsVoiceControlPrompt] 规则 6）允许「只是简短确认时省略整个块」，
+ * 审查这边必须用同一个口径，否则用户说一句「嗯」、模型回一句「好的」就会被判缺块而白白重生成一整轮。
+ * 这个阈值宁可放宽：漏判的代价只是这轮 TTS 用设置里的静态语气朗读，误判的代价是多烧一整轮生成。
+ */
+private const val SHORT_REPLY_EXEMPT_LENGTH = 12
+
+/**
  * 一次审查的结论。
  *
  * @property passed 是否通过；任何异常都按通过处理（fail-open），审查失败不该阻塞用户
@@ -92,10 +101,14 @@ class ReplyQualityReviewer(
             (LocalToolOption.Tts in assistant.localTools && !assistant.promptInjectionOverride.disableAll) ||
                 effectiveSystemPrompt.contains("tts_voice_control") ||
                 blockCount > 0
+        // 正文有效字符数（此刻 toText() 里的 `<tts_voice_control>` 块已被 TtsVoiceControlTransformer 剥掉，
+        // 所以数出来就是真正的对话正文）。与注入规范的「简短确认可省略块」对齐。
+        val isShortReply = replyText.count { it.isLetterOrDigit() } <= SHORT_REPLY_EXEMPT_LENGTH
         checkVoiceControlBlock(
             requiresBlock = requiresBlock,
             blockCount = blockCount,
             instruct = reply.ttsVoiceInstruct(),
+            isShortReply = isShortReply,
         )?.let { return it }
 
         // 没配审查模型时跟随快速模型，语义和记忆整理一致
@@ -156,7 +169,7 @@ class ReplyQualityReviewer(
  *
  * 四条规则按「先结构、后内容」排序，命中第一条就返回，避免同一处错误被报成两条：
  * 1. 块数量 > 1 → 判否（不管要不要块，多写标签都是违规）；
- * 2. 需要块却一个都没有 → 判否；
+ * 2. 需要块却一个都没有 → 判否（正文短到 [SHORT_REPLY_EXEMPT_LENGTH] 以内时豁免，与注入规范的第 6 条一致）；
  * 3. 有块但块内是空白 → 判否；
  * 4. 块内文本分词后不足 [MIN_VOICE_INSTRUCT_WORDS] 个词组 → 判否，判词用 [ChineseWordSegmenter]。
  *
@@ -165,12 +178,16 @@ class ReplyQualityReviewer(
  * 那种情况下模型是在自说自话地输出标签。
  * @param blockCount 这条回复累计剥离掉的块数量（含内容为空的块）
  * @param instruct 这条回复最终生效的语气描述，空块 / 没有块时是空串
+ * @param isShortReply 正文本身短到可以豁免「必须有块」，见 [SHORT_REPLY_EXEMPT_LENGTH]。只影响规则 2：
+ * 多块、块内空白、块内太简略这三条照样判否 —— 模型既然主动写了块，就没有「太短所以不用写」的理由。
  * @return null 表示通过；非 null 是判否结果，issues / suggestion 会拼进给生成模型的校正指令
  */
 internal fun checkVoiceControlBlock(
     requiresBlock: Boolean,
     blockCount: Int,
     instruct: String,
+    /** 正文本身短到可以豁免「必须有块」，见 [SHORT_REPLY_EXEMPT_LENGTH] */
+    isShortReply: Boolean = false,
 ): ReplyReviewResult? {
     if (blockCount > 1) {
         return voiceBlockFailure(
@@ -178,7 +195,7 @@ internal fun checkVoiceControlBlock(
             suggestion = "只保留正文之后那一个块，删掉多余的块；正文里不要提到标签本身",
         )
     }
-    if (requiresBlock && blockCount == 0 && instruct.isBlank()) {
+    if (requiresBlock && !isShortReply && blockCount == 0 && instruct.isBlank()) {
         return voiceBlockFailure(
             issue = "缺少 <tts_voice_control> 块",
             suggestion = "在正文之后单独成段补一个 <tts_voice_control>…</tts_voice_control> 块，" +

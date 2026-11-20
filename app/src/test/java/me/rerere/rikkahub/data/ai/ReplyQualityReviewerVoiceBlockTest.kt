@@ -13,7 +13,8 @@ import org.junit.Test
  * 块本体已经被 `TtsVoiceControlTransformer` 从正文里剥掉，`toText()` 里一个标签都看不到，
  * 所以这条格式约定必须由代码判定，不能让辅助模型去猜。这里盯的是五种情形：
  * 要求有块却没有、块内是空的、多出第二个块、块内写得太简略（分词后不足 5 个词组）、
- * 以及根本不需要块时不能乱判否。
+ * 以及根本不需要块时不能乱判否。另外还要盯住「简短确认可以省略块」（注入规范第 6 条）这条豁免
+ * 只作用于「缺块」，不能顺手放过另外三条。
  */
 class ReplyQualityReviewerVoiceBlockTest {
     @Test
@@ -109,6 +110,50 @@ class ReplyQualityReviewerVoiceBlockTest {
         val result = checkVoiceControlBlock(requiresBlock = true, blockCount = 1, instruct = EXACTLY_FIVE_INSTRUCT)
 
         assertNull(result)
+    }
+
+    @Test
+    fun `short reply may omit the block`() {
+        // 用户只说了一句「嗯」、模型按注入规范第 6 条回一句「好的」不带块：必须放行，
+        // 否则开了 TTS 本地工具的助手（requiresBlock 恒为 true）每轮都要白白重生成一次
+        val result = checkVoiceControlBlock(
+            requiresBlock = true,
+            blockCount = 0,
+            instruct = "",
+            isShortReply = true,
+        )
+
+        assertNull(result)
+    }
+
+    @Test
+    fun `two blocks are rejected even for a short reply`() {
+        // 豁免只覆盖「缺块」：正文再短，多写一个标签依旧是违规，模型在自说自话地输出标签
+        val result = checkVoiceControlBlock(
+            requiresBlock = true,
+            blockCount = 2,
+            instruct = INSTRUCT,
+            isShortReply = true,
+        )
+
+        assertNotNull(result)
+        assertFalse(result!!.passed)
+        assertTrue(result.issues.single().contains("只能有 1 个"))
+    }
+
+    @Test
+    fun `too short instruct is rejected even for a short reply`() {
+        // 模型既然主动写了块，就没有「正文太短所以块可以写得敷衍」的道理：块内空 / 太简略照样打回
+        val result = checkVoiceControlBlock(
+            requiresBlock = true,
+            blockCount = 1,
+            instruct = "平静地念",
+            isShortReply = true,
+        )
+
+        assertNotNull(result)
+        assertFalse(result!!.passed)
+        assertTrue(result.issues.single().contains("太简略"))
     }
 
     companion object {

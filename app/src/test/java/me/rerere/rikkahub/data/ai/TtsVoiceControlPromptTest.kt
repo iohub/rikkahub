@@ -39,6 +39,25 @@ class TtsVoiceControlPromptTest {
     }
 
     @Test
+    fun `prompt should state the same five word lower bound as the reviewer`() {
+        val prompt = ttsVoiceControlPrompt("")
+
+        // 六个维度要写全（漏掉「语气」时模型写出来的描述会缺这一项）
+        assertTrue(prompt.contains("语气、音量、语速、音色、气息、情绪"))
+        // 下限必须与 ReplyQualityReviewer.MIN_VOICE_INSTRUCT_WORDS = 5 同源，
+        // 否则生成侧照着自己的标准写、审查按另一套标准打回，白白多烧一轮
+        assertTrue(prompt.contains("至少要有 5 个词组"))
+    }
+
+    @Test
+    fun `prompt should mark the short confirmation as the only block exempt case`() {
+        val prompt = ttsVoiceControlPrompt("")
+
+        assertTrue(prompt.contains("可以省略整个块"))
+        assertTrue(prompt.contains("这条是唯一允许不写块的情况"))
+    }
+
+    @Test
     fun `empty guidance should not add extra content`() {
         assertEquals(TTS_VOICE_CONTROL_RULES, ttsVoiceControlPrompt(""))
         assertEquals(TTS_VOICE_CONTROL_RULES, ttsVoiceControlPrompt("   \n\n  "))
