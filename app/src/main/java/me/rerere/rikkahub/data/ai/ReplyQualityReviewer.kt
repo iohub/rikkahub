@@ -29,6 +29,14 @@ private const val MIN_SCORE = 0
 private const val MAX_SCORE = 100
 
 /**
+ * `<tts_voice_control>` 块内的语气描述至少要有几个词组。
+ *
+ * 阈值 5 是刻意定得很低的兜底：只拦明显敷衍的短句（「平静地念」「语气平淡」），
+ * 正常写完语气/音量/语速/音色/气息/情绪六个维度的描述轻松超过 20 个词组。
+ */
+private const val MIN_VOICE_INSTRUCT_WORDS = 5
+
+/**
  * 一次审查的结论。
  *
  * @property passed 是否通过；任何异常都按通过处理（fail-open），审查失败不该阻塞用户
@@ -140,11 +148,17 @@ class ReplyQualityReviewer(
 }
 
 /**
- * 确定性校验：`<tts_voice_control>` 块必须**恰好一个**且块内非空。
+ * 确定性校验：`<tts_voice_control>` 块必须**恰好一个**、块内非空，且块内的语气描述不能太简略。
  *
  * 纯函数、不挂起、不碰任何外部依赖，所以可以直接单测：审查链路上真正会误判的部分在 LLM 那边，
  * 这条格式约定不该也交给它去猜。块本体已经被 `TtsVoiceControlTransformer` 从正文里剥掉了，
  * 入参全部来自 metadata 回读（[ttsVoiceBlockCount] / [ttsVoiceInstruct]）。
+ *
+ * 四条规则按「先结构、后内容」排序，命中第一条就返回，避免同一处错误被报成两条：
+ * 1. 块数量 > 1 → 判否（不管要不要块，多写标签都是违规）；
+ * 2. 需要块却一个都没有 → 判否；
+ * 3. 有块但块内是空白 → 判否；
+ * 4. 块内文本分词后不足 [MIN_VOICE_INSTRUCT_WORDS] 个词组 → 判否，判词用 [ChineseWordSegmenter]。
  *
  * @param requiresBlock 这一轮是否要求必须有块（助手开了 TTS 本地工具且注入没被全局关掉，或 system prompt
  * 里本来就写了这条规范）。为 false 时不校验「有没有 / 空不空」，但「多出来第二个块」照样算违规：
@@ -178,6 +192,21 @@ internal fun checkVoiceControlBlock(
             issue = "<tts_voice_control> 块内没有内容",
             suggestion = "块内必须写一段具体的语气描述，涵盖语气、音量、语速、音色、气息、情绪六项，不能留空",
         )
+    }
+    // 块存在但写得太简略：TTS 只能拿到「平静地念」这种三词描述，等于没有风格指令。
+    // 只判内容不判 requiresBlock —— 走到这里 blockCount > 0，而 review() 里 requiresBlock 的判定
+    // 本来就含 blockCount > 0，为 true 只是必然结果；反过来「没要求块但模型自己写了块」时，
+    // 写得太敷衍同样该打回。
+    if (instruct.isNotBlank()) {
+        val wordCount = ChineseWordSegmenter.segment(instruct).size
+        if (wordCount < MIN_VOICE_INSTRUCT_WORDS) {
+            return voiceBlockFailure(
+                issue = "<tts_voice_control> 块内只写了 $wordCount 个词组，太简略",
+                suggestion = "块内要写成完整的一句风格描述，至少 $MIN_VOICE_INSTRUCT_WORDS 个词组，例如" +
+                    "「以略带慵懒和不满的语气，音量偏轻，语速不疾不徐，音色低沉柔和，" +
+                    "气息里带一点叹息，情绪是关心却装作不在意」",
+            )
+        }
     }
     return null
 }

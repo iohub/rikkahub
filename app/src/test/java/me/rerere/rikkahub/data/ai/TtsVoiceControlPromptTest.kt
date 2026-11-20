@@ -32,6 +32,10 @@ class TtsVoiceControlPromptTest {
         assertTrue(prompt.contains("单独成段"))
         // 块内写法：一段连贯的中文描述，而不是关键词列表
         assertTrue(prompt.contains("不加引号"))
+        // 与 ReplyQualityReviewer 的「不足 5 个词组就判否」同源：生成侧必须提前知道有信息量下限，
+        // 否则只能靠打回重写来教会模型，白白多花一轮生成
+        assertTrue(prompt.contains("足够信息量"))
+        assertTrue(prompt.contains("会被程序判为不合格"))
     }
 
     @Test
