@@ -2206,27 +2206,4 @@
   <string name="setting_remote_tts_cache_clear">Clear cache</string>
   <string name="setting_remote_tts_cache_clear_confirm">Delete %1$s of cached audio on this device? Cached entries can be regenerated, but the next playback will request the server again.</string>
   <string name="setting_remote_tts_cache_cleared">Cleared %1$d cached items</string>
-  <string name="setting_page_reviewer">Reply Quality Review</string>
-  <string name="setting_page_reviewer_desc">Check each reply after generation and regenerate it when it fails</string>
-  <string name="setting_reviewer_page_title">Reply Quality Review</string>
-  <string name="setting_reviewer_enable">Enable reply review</string>
-  <string name="setting_reviewer_enable_desc">Check the reply quality after generation and regenerate it when it fails. Only replies that pass are read aloud or pre-generated as speech automatically.</string>
-  <string name="setting_reviewer_model">Review model</string>
-  <string name="setting_reviewer_model_desc">Model used for the quality check. Leave it empty to follow the fast model</string>
-  <string name="setting_reviewer_model_follow_fast">Same as fast model</string>
-  <string name="setting_reviewer_strength">Review strictness</string>
-  <string name="setting_reviewer_strength_desc">How strictly replies are checked. Stricter presets send more replies back for rewriting</string>
-  <string name="setting_reviewer_preset_strict">Strict</string>
-  <string name="setting_reviewer_preset_balanced">Balanced</string>
-  <string name="setting_reviewer_preset_loose">Loose</string>
-  <string name="setting_reviewer_preset_custom">Custom</string>
-  <string name="setting_reviewer_preset_strict_desc">Strict: the score must reach 80 and no issue may be found</string>
-  <string name="setting_reviewer_preset_balanced_desc">Balanced: the score must reach 60. Only off-topic answers, truncated replies and breaking character fail</string>
-  <string name="setting_reviewer_preset_loose_desc">Loose: only fatal problems such as an off-topic answer, a truncated reply or breaking character fail</string>
-  <string name="setting_reviewer_prompt">Review prompt</string>
-  <string name="setting_reviewer_prompt_desc">Placeholders: {history} for the recent conversation, {reply} for the reply under review. Editing the prompt switches the strictness to Custom.</string>
-  <string name="setting_reviewer_prompt_sheet_desc">The model must return JSON only: {"pass":true,"score":85,"issues":[],"suggestion":""}. The pass field decides whether the reply is kept.</string>
-  <string name="setting_reviewer_max_retry">Max regenerations</string>
-  <string name="setting_reviewer_max_retry_desc">How many times a reply that fails the review may be regenerated. 0 only reviews without regenerating</string>
-  <string name="setting_reviewer_fail_open_hint">If the review itself fails (network error, timeout), the reply is delivered as is so the conversation never blocks.</string>
 </resources>

@@ -119,8 +119,8 @@ val ORCHESTRATION_STAGE_PRESETS: List<OrchestrationStagePreset> = listOf(
 /**
  * 阶段级审查预设的 ID。
  *
- * 与全局 `ReviewerPresetIds` 分开命名空间：两套 prompt 的审查对象不同（整条回复 vs 单个阶段的产出），
- * 混用会让「审查这块产出」变成「审查整条回复」。
+ * 单独一个命名空间：阶段审查的 prompt 只针对单个阶段的产出（块阶段还有 `{output}`），
+ * 与「审查整条回复」是两回事，混用会把「审查这块产出」变成「审查整条回复」。
  */
 object OrchestrationReviewerPresetIds {
     const val DIALOGUE = "dialogue_reviewer"
@@ -209,7 +209,7 @@ fun findOrchestrationReviewerPreset(id: String?): OrchestrationReviewerPreset? =
 /**
  * 把材料填进 prompt 模板。
  *
- * 与 `fillReviewerPrompt` 的区别：这里一律是纯替换，不做「模板里一个占位符都没有就把材料追加到末尾」的兜底。
+ * 与其它后台任务的占位符替换不同：这里一律是纯替换，不做「模板里一个占位符都没有就把材料追加到末尾」的兜底。
  * 编排阶段的模板是用户自己写的，硬塞材料会破坏他刻意安排的结构；真正的兜底放在
  * `buildBlockStagePrompt` 里，那里知道自己在拼哪个阶段、缺哪些材料。
  *

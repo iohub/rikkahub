@@ -32,20 +32,18 @@ class TtsVoiceControlPromptTest {
         assertTrue(prompt.contains("单独成段"))
         // 块内写法：一段连贯的中文描述，而不是关键词列表
         assertTrue(prompt.contains("不加引号"))
-        // 与 ReplyQualityReviewer 的「不足 5 个词组就判否」同源：生成侧必须提前知道有信息量下限，
-        // 否则只能靠打回重写来教会模型，白白多花一轮生成
+        // 生成侧必须提前知道有信息量下限，否则模型会把「平静地念」这种一句话当成合规描述
         assertTrue(prompt.contains("足够信息量"))
-        assertTrue(prompt.contains("会被程序判为不合格"))
+        assertTrue(prompt.contains("视为不合格"))
     }
 
     @Test
-    fun `prompt should state the same five word lower bound as the reviewer`() {
+    fun `prompt should state the five word lower bound`() {
         val prompt = ttsVoiceControlPrompt("")
 
         // 六个维度要写全（漏掉「语气」时模型写出来的描述会缺这一项）
         assertTrue(prompt.contains("语气、音量、语速、音色、气息、情绪"))
-        // 下限必须与 ReplyQualityReviewer.MIN_VOICE_INSTRUCT_WORDS = 5 同源，
-        // 否则生成侧照着自己的标准写、审查按另一套标准打回，白白多烧一轮
+        // 下限要写成具体数字（5 个词组），模型才能照着数；只写「要有信息量」等于没给标准
         assertTrue(prompt.contains("至少要有 5 个词组"))
     }
 

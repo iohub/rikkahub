@@ -9,7 +9,6 @@ import me.rerere.ai.provider.ProviderSetting
 import me.rerere.asr.ASRProviderSetting
 import me.rerere.mediagen.provider.MediaGenerationProviderSetting
 import me.rerere.rikkahub.data.ai.mcp.McpServerConfig
-import me.rerere.rikkahub.data.ai.prompts.ReviewerPresetIds
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.Lorebook
 import me.rerere.rikkahub.data.model.PromptInjection
@@ -124,13 +123,6 @@ private val SAMPLE = Settings(
     developerMode = true,
     displaySetting = DisplaySetting(userNickname = "me"),
     networkSetting = NetworkSetting(userAgent = "agent"),
-    reviewerSetting = ReviewerSetting(
-        enabled = true,
-        presetId = ReviewerPresetIds.STRICT,
-        prompt = "review {history} {reply}",
-        maxRetry = 2,
-        modelId = id(40),
-    ),
     favoriteModels = listOf(id(30)),
     chatModelId = id(1),
     fastModelId = id(2),
@@ -207,7 +199,6 @@ private val STORED_KEYS = setOf(
     "custom_themes",
     "display_setting",
     "network_setting",
-    "reviewer_setting",
     "developer_mode",
     "favorite_models",
     "chat_model",

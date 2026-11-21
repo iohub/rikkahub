@@ -21,9 +21,9 @@ private const val TAG = "StageReviewer"
 /**
  * 阶段级审查器：审「一个编排阶段的产出」，而不是整条回复。
  *
- * 与 [ReplyQualityReviewer] 同构（同样是「问一次、解析一次」，同样 fail-open），差异只有三点：
+ * 骨架沿用「问一次、解析一次、fail-open」这一套（解析复用 `parseReviewResult`），差异只有三点：
  * 1. 审查对象是阶段产出（块阶段的产出还要额外填进 `{output}`），所以 prompt 从 `stage.reviewer` 取；
- * 2. 完全没有 `checkVoiceControlBlock` 那套 TTS 块确定性校验 —— 那套规则针对的是「一条回复里必须
+ * 2. 完全没有 TTS 块那套确定性校验 —— 那套规则针对的是「一条回复里必须
  *    恰好一个 `<tts_voice_control>` 块」，而块阶段的产出本身就是块内容，套用只会自相矛盾；
  * 3. 判否之后的重试策略不在这里，由 [AgentOrchestrator] 决定。
  *
@@ -54,7 +54,7 @@ class StageReviewer(
             ?: defaultReviewerPrompt(stage)
             ?: return failOpen("prompt not found")
 
-        // 没配阶段审查模型时跟随快速模型，语义与 ReplyQualityReviewer / 记忆整理一致
+        // 没配阶段审查模型时跟随快速模型，语义与记忆整理一致
         val model = stage.reviewer.modelId?.let { settings.findModelById(it) }
             ?: settings.findModelById(settings.fastModelId)
             ?: return failOpen("model not found")

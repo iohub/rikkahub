@@ -1,7 +1,5 @@
 package me.rerere.rikkahub.data.datastore
 
-import me.rerere.rikkahub.data.ai.prompts.DEFAULT_REVIEWER_PROMPT
-import me.rerere.rikkahub.data.ai.prompts.ReviewerPresetIds
 import me.rerere.rikkahub.data.model.AssistantOrchestration
 import me.rerere.tts.provider.TTSProviderSetting
 import kotlin.uuid.Uuid
@@ -120,7 +118,6 @@ private fun Settings.withValuesInRange(): Settings = copy(
         )
     },
     ttsProviders = ttsProviders.map { provider -> provider.withValuesInRange() },
-    reviewerSetting = reviewerSetting.withValuesInRange(),
     // 编排阶段的取值收敛挂在助手下面，与其它助手级配置一样在读盘后统一过一遍
     assistants = assistants.map { assistant ->
         assistant.copy(orchestration = assistant.orchestration.withValuesInRange())
@@ -149,9 +146,9 @@ private fun AssistantOrchestration.withoutInvalidReferences(validModelIds: Set<U
     )
 
 /**
- * 编排阶段的取值收敛，与 [ReviewerSetting.withValuesInRange] 同一套做法：只收越界值，合法值原样保留。
+ * 编排阶段的取值收敛：只收越界值，合法值原样保留。
  *
- * - `maxRetry` 与全局审查共用 0..[MAX_REVIEWER_RETRY]：再多也只是把等待时间翻倍；
+ * - `maxRetry` 收到 0..[MAX_REVIEWER_RETRY]：再多也只是把等待时间翻倍；
  * - `temperature` 收到 0..2，这是各家 API 通用的量程；
  * - `maxTokens` 小于 1 等于让模型什么都不说，直接置 null 走默认；上限只拦明显手滑的巨大值。
  */
@@ -176,20 +173,8 @@ private const val MAX_STAGE_TEMPERATURE = 2f
 /** 编排阶段输出上限的天花板：超过这个数绝对不是正常配置，只可能是输入错误 */
 private const val MAX_STAGE_MAX_TOKENS = 32_768
 
-/** 审查重试次数上限：再多也只是把用户的等待时间翻倍 */
+/** 编排阶段审查的重试次数上限：再多也只是把用户的等待时间翻倍 */
 private const val MAX_REVIEWER_RETRY = 3
-
-/**
- * 审查配置的取值收敛。
- *
- * 预设 ID 认不出（旧版本删掉的预设、手改过的盘上数据）时回退平衡版；prompt 被清空时回填默认正文，
- * 否则审查模型会收到一个空 prompt、每条回复都被判不合格。
- */
-private fun ReviewerSetting.withValuesInRange(): ReviewerSetting = copy(
-    maxRetry = maxRetry.coerceIn(0, MAX_REVIEWER_RETRY),
-    presetId = presetId.takeIf { it in ReviewerPresetIds.KNOWN } ?: ReviewerPresetIds.BALANCED,
-    prompt = prompt.takeIf { it.isNotBlank() } ?: DEFAULT_REVIEWER_PROMPT,
-)
 
 /**
  * 远程 TTS 的输出格式只有服务端列出的几种。

@@ -9,11 +9,9 @@ import me.rerere.asr.ASRProviderSetting
 import me.rerere.mediagen.provider.MediaGenerationProviderSetting
 import me.rerere.rikkahub.data.ai.mcp.McpServerConfig
 import me.rerere.rikkahub.data.ai.prompts.DEFAULT_OCR_PROMPT
-import me.rerere.rikkahub.data.ai.prompts.DEFAULT_REVIEWER_PROMPT
 import me.rerere.rikkahub.data.ai.prompts.DEFAULT_SUGGESTION_PROMPT
 import me.rerere.rikkahub.data.ai.prompts.DEFAULT_TITLE_PROMPT
 import me.rerere.rikkahub.data.ai.prompts.DEFAULT_TRANSLATION_PROMPT
-import me.rerere.rikkahub.data.ai.prompts.ReviewerPresetIds
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.Avatar
 import me.rerere.rikkahub.data.model.Lorebook
@@ -39,8 +37,6 @@ data class Settings(
     val developerMode: Boolean = false,
     val displaySetting: DisplaySetting = DisplaySetting(),
     val networkSetting: NetworkSetting = NetworkSetting(),
-    // 回复质量审查：默认关闭，不改变已有的生成速度与花费
-    val reviewerSetting: ReviewerSetting = ReviewerSetting(),
     val favoriteModels: List<Uuid> = emptyList(),
     val chatModelId: Uuid = Uuid.random(),
     val fastModelId: Uuid = Uuid.random(),
@@ -118,27 +114,6 @@ data class NetworkSetting(
     val requestTimeoutSeconds: Int = 0,
     /** 模型经 SSH 隧道代理时，请求超时或断连后自动重建隧道再重试 */
     val autoReconnectSshTunnel: Boolean = true,
-)
-
-/**
- * 回复质量审查（reviewer）的配置。
- *
- * 助手生成完一条回复后，先让一个辅助模型按 [prompt] 审一遍；不合格就丢弃重生成，
- * 只有合格的回复才会进入 TTS 自动播放 / 预生成。
- *
- * @property enabled 是否启用审查，默认关闭
- * @property presetId 当前 prompt 来自哪套预设（[ReviewerPresetIds]）；用户改过 prompt 后是 [ReviewerPresetIds.CUSTOM]
- * @property prompt 实际发给审查模型的 prompt 正文，含 `{history}` 与 `{reply}` 占位符
- * @property maxRetry 审查不通过时最多重新生成几次，归一化夹在 0..3
- * @property modelId 审查用的模型；null 表示跟随快速模型（语义同 [Settings.memoryModelId]）
- */
-@Serializable
-data class ReviewerSetting(
-    val enabled: Boolean = false,
-    val presetId: String = ReviewerPresetIds.BALANCED,
-    val prompt: String = DEFAULT_REVIEWER_PROMPT,
-    val maxRetry: Int = 1,
-    val modelId: Uuid? = null,
 )
 
 @Serializable

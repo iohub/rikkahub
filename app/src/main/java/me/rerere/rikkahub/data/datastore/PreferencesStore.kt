@@ -108,9 +108,6 @@ class SettingsStore internal constructor(
         val NETWORK_SETTING = stringPreferencesKey("network_setting")
         val DEVELOPER_MODE = booleanPreferencesKey("developer_mode")
 
-        // 回复质量审查
-        val REVIEWER_SETTING = stringPreferencesKey("reviewer_setting")
-
         // 模型选择
         val FAVORITE_MODELS = stringPreferencesKey("favorite_models")
         val SELECT_MODEL = stringPreferencesKey("chat_model")

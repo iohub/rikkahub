@@ -8,9 +8,10 @@ import org.junit.Test
 /**
  * 审查结果解析的回归基线：模型不会永远老老实实只输出 JSON。
  *
- * 解析不出来、看不出结论时必须 fail-open 通过，否则一次不守格式的回复会让调用方无限重新生成。
+ * 解析不出来、看不出结论时必须 fail-open 通过，否则一次不守格式的输出就会被当成不合格。
+ * 这套解析是编排阶段审查（StageReviewer）与块输出规范化共用的，所以单独守着。
  */
-class ReplyQualityReviewerParseTest {
+class ReviewParsingTest {
     @Test
     fun `standard json is parsed as is`() {
         val result = parseReviewResult("""{"pass": true, "score": 85, "issues": [], "suggestion": ""}""")

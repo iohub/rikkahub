@@ -47,7 +47,6 @@ import me.rerere.rikkahub.data.ai.ChatRequestFactory
 import me.rerere.rikkahub.data.ai.ChatTurnContext
 import me.rerere.rikkahub.data.ai.ConversationMetaGenerator
 import me.rerere.rikkahub.data.ai.MemoryConsolidationScheduler
-import me.rerere.rikkahub.data.ai.ReplyQualityReviewer
 import me.rerere.rikkahub.data.ai.ReplyReviewResult
 import me.rerere.rikkahub.data.ai.StageReviewer
 import me.rerere.rikkahub.data.ai.TranslationHandler
@@ -121,7 +120,7 @@ private const val REVIEW_FEEDBACK_ISSUE_MAX_LENGTH = 150
 private const val REVIEW_FEEDBACK_SUGGESTION_MAX_LENGTH = 240
 
 /**
- * 编排的块阶段看到的历史条数与单条长度，与 `ReplyQualityReviewer` 的口径一致（6 条 / 300 字）。
+ * 编排的块阶段看到的历史条数与单条长度，与阶段审查（[StageReviewer]）的口径一致（6 条 / 300 字）。
  *
  * 刻意共用同一组数字：块阶段的模型和审查模型看到的历史越长越容易跑题，而对话期间「这块指令切不切题」
  * 取决于最近几轮聊了什么，不需要整段历史。
@@ -143,16 +142,12 @@ enum class ChatErrorSolution {
 }
 
 /**
- * 审查打回时，校正指令面向的是「什么」。
+ * 审查打回时，校正指令面向的是「对话正文」。
  *
- * 单 agent 路径的话术必须逐字保留：它同时承担了「`<tts_voice_control>` 块该怎么写」的复述，
- * 确定性校验打回时那是模型唯一需要修正的东西。
- * 编排下不能提块 —— 写块是另一个阶段的事，让主 agent 补块只会在正文里留下一个没人剥离的标签。
+ * 编排的对话阶段被明确要求「不要写任何块」，所以固定段落绝不能提块 ——
+ * 让主 agent 补块只会在正文里留下一个没人剥离的标签。
+ * 早期还有「整条回复」那种面向对象（会复述 `tts_voice_control` 块的约定），随全局审查一起删掉了。
  */
-private enum class ReviewFeedbackTarget {
-    WHOLE_REPLY,
-    DIALOGUE_ONLY,
-}
 
 class ChatService(
     private val context: Application,
@@ -164,7 +159,6 @@ class ChatService(
     private val memoryConsolidationScheduler: MemoryConsolidationScheduler,
     private val translationHandler: TranslationHandler,
     private val metaGenerator: ConversationMetaGenerator,
-    private val replyQualityReviewer: ReplyQualityReviewer,
     private val stageReviewer: StageReviewer,
     private val agentOrchestrator: AgentOrchestrator,
     val mcpManager: McpManager,
@@ -319,9 +313,12 @@ class ChatService(
     }
 
     /**
-     * 生成完成出口：先做质量审查，通过才 emit（TTS 自动播放 / 预生成监听这个流）。
+     * 生成完成出口：编排的对话阶段先做审查，通过才 emit（TTS 自动播放 / 预生成监听这个流）。
      *
-     * 未通过时**不 emit**，只记一个待重生成标记，交给 [onSessionGenerationFinished]（任务槽已清空）
+     * **未编排的助手不再做任何 LLM 审查**（全局回复质量审查已按产品要求移除），生成完成即 emit；
+     * 审查只保留在编排的阶段审查里（[StageReviewer]，见 [notifyOrchestratedGenerationDone]）。
+     *
+     * 编排审查未通过时**不 emit**，只记一个待重生成标记，交给 [onSessionGenerationFinished]（任务槽已清空）
      * 去重生成 —— 在生成 job 内直接调 regenerateAtMessage 会自我 cancel / 自我 join 死锁。
      * 达到重试上限时放行 emit，宁可交付一条不合格的回复也不能把会话卡住。
      */
@@ -329,7 +326,7 @@ class ChatService(
         val settings = settingsStore.awaitLoaded()
 
         val conversation = session.state.value
-        // 还在等工具审批：这一轮没结束，等审批后的下一轮再审查
+        // 还在等工具审批：这一轮没结束，不动它
         if (conversation.isAwaitingToolApproval) {
             _generationDoneFlow.emit(conversationId)
             return
@@ -342,46 +339,29 @@ class ChatService(
             }
 
         // 启用编排的助手走「按阶段审查」：对话阶段有自己的 reviewer，块阶段的重试在编排器内部完成。
-        // 全局 reviewerSetting 在这里**不再生效**：它硬性要求正文之后恰好一个 `tts_voice_control` 块
-        // （见 ReplyQualityReviewer.checkVoiceControlBlock），而编排恰恰把写块搬给了独立的块阶段，
-        // 两套规则同时跑必然互相判否，最后变成「永远在重生成」。
+        // 这里刻意**不**回退到任何全局审查：那套规则硬性要求正文之后恰好一个 `tts_voice_control` 块，
+        // 而编排恰恰把写块搬给了独立的块阶段，两套规则同时跑必然互相判否，最后变成「永远在重生成」。
         val orchestration = settings.getAssistantOf(conversation).orchestration
         if (orchestration.enabled) {
             notifyOrchestratedGenerationDone(session, conversationId, settings, conversation, reply, orchestration)
             return
         }
 
-        if (!settings.reviewerSetting.enabled) {
-            _generationDoneFlow.emit(conversationId)
-            return
-        }
-
-        // 空回复交给上游的错误处理，不在这里判不合格
-        if (reply.toText().isBlank()) {
-            _generationDoneFlow.emit(conversationId)
-            return
-        }
-
-        val result = replyQualityReviewer.review(settings, conversation, reply)
-        if (result.passed) {
-            session.resetReviewRetryState()
-            _generationDoneFlow.emit(conversationId)
-            return
-        }
-
-        handleReviewFailure(session, conversationId, settings, reply, result)
+        // 非编排助手：不再做 LLM 审查（功能已按产品要求移除），生成完成即 emit。
+        // 原来这里会先调全局审查器、判否后打回重生成，该功能现已整体删除；审查只保留在编排的阶段审查里。
+        _generationDoneFlow.emit(conversationId)
     }
 
     /**
      * 编排形态下的生成完成出口：只审「主对话阶段」那一段。
      *
-     * 与单 agent 路径的三点差异，都是为了不在编排下做出错误判断：
+     * 下面三点都是为了不在编排下做出错误判断：
      * 1. 审查对象是**对话正文**（去掉编排写回的可见块），不是整条消息 —— 写回的块是编排自己的产物，
      *    而阶段审查的标准里「出现标签块即不合格」针对的是模型自己往正文里写标签；
-     * 2. 审查用阶段自己的 prompt / 模型 / 重试上限，不用全局 `reviewerSetting`；
+     * 2. 审查用阶段自己的 prompt / 模型 / 重试上限；
      * 3. 块阶段**不在这里审查**：它们的重试已经在 [AgentOrchestrator] 内部完成，重复审一遍只会再烧一次请求。
      *
-     * 对话阶段没开审查时直接放行。这里也刻意**不**回退到全局 reviewer：那套规则要求正文里有 tts 块，
+     * 对话阶段没开审查时直接放行。这里也刻意**不**引入任何全局审查做兜底：那套规则要求正文里有 tts 块，
      * 而编排的正文阶段被明确要求「不要写任何块」。「这个阶段不审」是用户的选择，不是需要兜底的故障。
      *
      * 重试状态仍复用 [ConversationSession] 的单槽字段（一个会话同时只有一条待重生成的回复）：
@@ -402,7 +382,7 @@ class ChatService(
             return
         }
 
-        // 空内容交给上游的错误处理，不在这里判不合格（与单 agent 路径同一个口径）
+        // 空内容交给上游的错误处理，不在这里判不合格
         val dialogue = reply.dialogueTextWithoutBlocks(orchestration).trim()
         if (dialogue.isBlank()) {
             _generationDoneFlow.emit(conversationId)
@@ -428,18 +408,16 @@ class ChatService(
         handleReviewFailure(
             session = session,
             conversationId = conversationId,
-            settings = settings,
             reply = reply,
             result = result,
             // 上限取阶段自己的配置：归一化（0..3）在 SettingsNormalization 里做过
             maxRetry = stage.reviewer.maxRetry,
             origin = "Dialogue stage review",
-            feedbackTarget = ReviewFeedbackTarget.DIALOGUE_ONLY,
         )
     }
 
     /**
-     * 块阶段看到的历史：与 [ReplyQualityReviewer] 同一口径（最近 6 条、每条 300 字，带 `[ROLE]: ` 前缀）。
+     * 块阶段看到的历史：与对话阶段审查同一口径（最近 6 条、每条 300 字，带 `[ROLE]: ` 前缀）。
      *
      * 两条链路喂给模型的「上下文」长得一样，判断「这块指令切不切题」时口径才不会互相打脸。
      */
@@ -461,18 +439,12 @@ class ChatService(
     private suspend fun handleReviewFailure(
         session: ConversationSession,
         conversationId: Uuid,
-        settings: Settings,
         reply: UIMessage,
         result: ReplyReviewResult,
-        /**
-         * 这次审查允许的重试上限。默认取全局配置，编排的对话阶段传 `stage.reviewer.maxRetry` ——
-         * 阶段审查有自己的预算，不该被「整条回复审几次」那个数字限制。
-         */
-        maxRetry: Int = settings.reviewerSetting.maxRetry,
-        /** 日志里这条链路的名称，用来把「整条回复审查」与「对话阶段审查」分开看 */
-        origin: String = "Review",
-        /** 校正指令面向的对象，见 [ReviewFeedbackTarget] */
-        feedbackTarget: ReviewFeedbackTarget = ReviewFeedbackTarget.WHOLE_REPLY,
+        /** 这次审查允许的重试上限：来自阶段配置 `stage.reviewer.maxRetry`（归一化 0..3） */
+        maxRetry: Int,
+        /** 日志里这条链路的名称，用来区分不同的审查阶段 */
+        origin: String,
     ) {
         val reason = (result.issues.firstOrNull() ?: result.suggestion)
             .ifBlank { "score ${result.score}" }
@@ -487,7 +459,7 @@ class ChatService(
                 "$origin failed (score ${result.score}), regenerating ${reply.id} " +
                     "($attempt/$maxRetry): $reason",
             )
-            session.markPendingReviewRetry(reply.id, buildReviewFeedback(result, feedbackTarget))
+            session.markPendingReviewRetry(reply.id, buildReviewFeedback(result))
             appEventBus.tryEmit(
                 AppEvent.ReplyReviewRetry(
                     conversationId = conversationId,
@@ -512,17 +484,11 @@ class ChatService(
      * 所以单独拼一份完整文本，随下一次重生成作为一条 synthetic user 消息追加到请求末尾
      * （见 `ChatRequestFactory.buildStep`），只在那一轮生效、不落库。
      *
-     * 固定段落里把 `<tts_voice_control>` 的约定再复述一遍：确定性校验打回时，
-     * 这条约定就是模型这次唯一需要修正的东西。
-     *
-     * [target] 换成 [ReviewFeedbackTarget.DIALOGUE_ONLY] 时（编排的对话阶段），固定段落不再提块：
-     * 那一段被明确要求「不要写任何块」，再要求它补块只会在正文里留下一个没人剥离的标签。
-     * 默认值的输出与改造前**逐字一致**，老助手的打回话术不变。
+     * 只剩编排的对话阶段会走到这里，所以固定段落只针对「对话正文」：
+     * 那一段被明确要求「不要写任何块」，提块只会在正文里留下一个没人剥离的标签。
+     * 原先面向「整条回复」的话术（会复述 `<tts_voice_control>` 块的约定）已随全局审查一起删除。
      */
-    private fun buildReviewFeedback(
-        result: ReplyReviewResult,
-        target: ReviewFeedbackTarget = ReviewFeedbackTarget.WHOLE_REPLY,
-    ): String {
+    private fun buildReviewFeedback(result: ReplyReviewResult): String {
         val suggestion = result.suggestion.trim().take(REVIEW_FEEDBACK_SUGGESTION_MAX_LENGTH)
         // issues 为空时用 suggestion 兜底，至少让模型看到一条「必须修正的问题」
         val issues = result.issues
@@ -533,12 +499,7 @@ class ChatService(
             .ifEmpty { listOfNotNull(suggestion.takeIf { it.isNotBlank() }) }
         return buildString {
             appendLine("<review_feedback>")
-            appendLine(
-                when (target) {
-                    ReviewFeedbackTarget.WHOLE_REPLY -> "你刚刚那版回复没有通过系统自检，请把整条回复重新生成一遍。"
-                    ReviewFeedbackTarget.DIALOGUE_ONLY -> "你刚刚那段对话文本没有通过系统自检，请把对话文本重新生成一遍。"
-                }
-            )
+            appendLine("你刚刚那段对话文本没有通过系统自检，请把对话文本重新生成一遍。")
             if (issues.isNotEmpty()) {
                 appendLine("必须修正的问题：")
                 issues.forEach { append("- ").appendLine(it) }
@@ -547,20 +508,8 @@ class ChatService(
             if (suggestion.isNotBlank() && result.issues.isNotEmpty()) {
                 append("修改要求：").appendLine(suggestion)
             }
-            when (target) {
-                ReviewFeedbackTarget.WHOLE_REPLY -> {
-                    appendLine(
-                        "如果原文里有 <tts_voice_control> 块：整条回复有且只能有一个，必须在正文之后单独成段，" +
-                            "块内用一段自然语言写清语气、音量、语速、音色、气息、情绪。"
-                    )
-                    appendLine("只输出修正后的正文与那个块，不要解释、不要道歉、不要提到这段提示。")
-                }
-
-                ReviewFeedbackTarget.DIALOGUE_ONLY -> {
-                    appendLine("只输出对话文本：不要输出任何标签块（包括 <tts_voice_control>），不要括号、旁白、动作或心理描写。")
-                    appendLine("只输出修正后的对话文本，不要解释、不要道歉、不要提到这段提示。")
-                }
-            }
+            appendLine("只输出对话文本：不要输出任何标签块（包括 <tts_voice_control>），不要括号、旁白、动作或心理描写。")
+            appendLine("只输出修正后的对话文本，不要解释、不要道歉、不要提到这段提示。")
             append("</review_feedback>")
         }
     }

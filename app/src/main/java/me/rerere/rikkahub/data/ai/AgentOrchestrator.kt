@@ -63,7 +63,7 @@ data class OrchestrationResult(
  *
  * 三个刻意的取舍：
  * 1. **任何单阶段的失败都不影响其它阶段**：块是独立的信息，一个阶段的模型抽风不该让整条回复丢掉语音指令；
- * 2. **fail-open**：审查重试到上限后，只要最后一次内容非空就照用（与 [ReplyQualityReviewer] 同一套哲学），
+ * 2. **fail-open**：审查重试到上限后，只要最后一次内容非空就照用（与 [StageReviewer] 同一套哲学），
  *    并记一条 failure 让上层知道这块质量存疑；
  * 3. **[CancellationException] 一律 rethrow**：用户点了停止生成就必须立刻停，不能被「不中断整链」的兜底吞掉。
  */
@@ -252,7 +252,7 @@ private fun defaultStagePrompt(stage: AgentStage): OrchestrationStagePreset? = w
  * 把模型输出收成「块内正文」。
  *
  * 模型对「块内内容」的输出习惯很不稳定，这一步负责吃掉所有可预期的包装：
- * 1. Markdown 围栏（```xml / ```）—— 复用全局审查那套 [stripCodeFence]；
+ * 1. Markdown 围栏（```xml / ```）—— 复用审查解析那套 [stripCodeFence]；
  * 2. 自作主张加上的外层 `<tag>…</tag>`（大小写、标签名两侧空白都容忍，多层嵌套逐层剥）；
  * 3. 首尾成对的引号（`"` `'` `“”` `「」` `『』`）；
  * 4. 连续空行与首尾空白。
@@ -306,7 +306,7 @@ private fun String.stripSurroundingQuotes(): String {
 /**
  * 组装块阶段的最终 prompt：先填占位符，再按需兜底材料，最后挂上重试反馈。
  *
- * 兜底的理由与 `fillReviewerPrompt` 一样：用户手写模板时很容易只写指令、不写占位符，那样模型什么材料都
+ * 兜底的理由与其它后台任务的占位符替换一致：用户手写模板时很容易只写指令、不写占位符，那样模型什么材料都
  * 看不到，只会凭空编。这里知道自己在拼哪个阶段，所以可以补得比 `fillOrchestrationPrompt` 更具体。
  */
 internal fun buildBlockStagePrompt(
