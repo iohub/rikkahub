@@ -49,6 +49,7 @@ import me.rerere.hugeicons.stroke.McpServer
 import me.rerere.hugeicons.stroke.Message02
 import me.rerere.hugeicons.stroke.Puzzle
 import me.rerere.hugeicons.stroke.Settings03
+import me.rerere.hugeicons.stroke.Workflow
 import me.rerere.hugeicons.stroke.Wrench01
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.Screen
@@ -168,6 +169,12 @@ fun AssistantDetailPage(id: String) {
                         leadingContent = { CardGroupIcon(HugeIcons.Wrench01, containerColor = containerColor, contentColor = contentColor) },
                         supportingContent = { Text(stringResource(R.string.assistant_detail_local_tools_desc)) },
                         headlineContent = { Text(stringResource(R.string.assistant_page_tab_local_tools)) },
+                    )
+                    item(
+                        onClick = { navController.navigate(Screen.AssistantOrchestration(id)) },
+                        leadingContent = { CardGroupIcon(HugeIcons.Workflow, containerColor = containerColor, contentColor = contentColor) },
+                        supportingContent = { Text(stringResource(R.string.assistant_orchestration_detail_desc)) },
+                        headlineContent = { Text(stringResource(R.string.assistant_orchestration_title)) },
                     )
                 }
             }

@@ -87,6 +87,7 @@ import me.rerere.rikkahub.ui.pages.assistant.detail.AssistantExtensionsPage
 import me.rerere.rikkahub.ui.pages.assistant.detail.AssistantLocalToolPage
 import me.rerere.rikkahub.ui.pages.assistant.detail.AssistantMcpPage
 import me.rerere.rikkahub.ui.pages.assistant.detail.AssistantMemoryPage
+import me.rerere.rikkahub.ui.pages.assistant.detail.AssistantOrchestrationPage
 import me.rerere.rikkahub.ui.pages.assistant.detail.AssistantPromptPage
 import me.rerere.rikkahub.ui.pages.assistant.detail.AssistantRequestPage
 import me.rerere.rikkahub.ui.pages.backup.BackupPage
@@ -431,6 +432,10 @@ class RouteActivity : ComponentActivity() {
                                 AssistantExtensionsPage(key.id)
                             }
 
+                            entry<Screen.AssistantOrchestration> { key ->
+                                AssistantOrchestrationPage(key.id)
+                            }
+
                             entry<Screen.Translator> {
                                 TranslatorPage()
                             }
@@ -731,6 +736,10 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data class AssistantInjections(val id: String) : Screen
+
+    /** 多 Agent 编排配置，按助手 id 定位 */
+    @Serializable
+    data class AssistantOrchestration(val id: String) : Screen
 
     @Serializable
     data object Translator : Screen
