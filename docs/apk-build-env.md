@@ -113,8 +113,8 @@ OS:            Mac OS X 26.4.1 aarch64
 | `compileSdk` | `release(37) { minorApiLevel = 2 }` → **android-37.2** |
 | `minSdk` | **26** |
 | `targetSdk` | **37** |
-| `versionCode` | **197** |
-| `versionName` | **3.3.0** |
+| `versionCode` | **520** |
+| `versionName` | **10.0.1** |
 | `kotlin.compilerOptions.jvmTarget` | `JVM_17` |
 | `buildToolsVersion` | 未显式声明（由 AGP 决定） |
 | `ndkVersion` | 未显式声明（由 AGP 决定，实测选中 28.2.13676358） |
@@ -132,8 +132,8 @@ android {
         applicationId = "me.rerere.rikkahub"
         minSdk = 26
         targetSdk = 37
-        versionCode = 197
-        versionName = "3.3.0"
+        versionCode = 520
+        versionName = "10.0.1"
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
 }
