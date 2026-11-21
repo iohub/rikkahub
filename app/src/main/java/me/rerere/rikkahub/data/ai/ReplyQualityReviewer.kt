@@ -20,7 +20,7 @@ import me.rerere.rikkahub.utils.JsonInstant
 private const val TAG = "ReplyQualityReviewer"
 
 /** 审查请求的超时时间：审查只是锦上添花，卡住 20 秒就该放行 */
-private const val REVIEW_TIMEOUT_MILLIS = 20_000L
+internal const val REVIEW_TIMEOUT_MILLIS = 20_000L
 
 /** 每条历史消息最多带进 prompt 的字数 */
 private const val HISTORY_MESSAGE_MAX_LENGTH = 300
@@ -297,7 +297,7 @@ private fun keywordVerdict(text: String): ReviewVerdict = when {
 }
 
 /** 去掉 ```json / ``` 围栏；没有围栏时原样返回 */
-private fun String.stripCodeFence(): String {
+internal fun String.stripCodeFence(): String {
     var text = trim()
     if (!text.startsWith("```")) return text
     text = text.substring(3)

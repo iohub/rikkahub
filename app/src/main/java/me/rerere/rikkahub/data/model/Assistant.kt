@@ -53,6 +53,8 @@ data class Assistant(
     val timeReminderIntervalMinutes: Int = 60, // 时间提醒间隔（分钟，至少 1 分钟）
     val allowConversationSystemPrompt: Boolean = false, // 允许对话单独重写 system prompt
     val promptInjectionOverride: PromptInjectionOverride = PromptInjectionOverride(), // 额外提示词注入的关闭开关
+    // 多 Agent 串联编排; 默认关闭, 老 JSON 里没有这个键时反序列化成「不编排」
+    val orchestration: AssistantOrchestration = AssistantOrchestration(),
     val isLocked: Boolean = false, // 是否已加密隐藏(设置密码后不显示在列表/选择器中)
     val lockPasswordHash: String = "", // 解锁密码的 SHA-256 hex 摘要, 为空表示未设置
 )

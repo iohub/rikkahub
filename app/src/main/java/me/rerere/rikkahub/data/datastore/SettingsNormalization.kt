@@ -2,7 +2,9 @@ package me.rerere.rikkahub.data.datastore
 
 import me.rerere.rikkahub.data.ai.prompts.DEFAULT_REVIEWER_PROMPT
 import me.rerere.rikkahub.data.ai.prompts.ReviewerPresetIds
+import me.rerere.rikkahub.data.model.AssistantOrchestration
 import me.rerere.tts.provider.TTSProviderSetting
+import kotlin.uuid.Uuid
 
 /** 读盘后和每次修改后都要过一遍，保证内存里的设置始终是规整的。 */
 internal fun Settings.normalized(): Settings =
@@ -85,7 +87,9 @@ internal fun Settings.withoutInvalidReferences(): Settings {
                 // 过滤掉不存在的快捷消息 ID
                 quickMessageIds = assistant.quickMessageIds.filter { id ->
                     id in validQuickMessageIds
-                }.toSet()
+                }.toSet(),
+                // 编排阶段里指向已删模型的引用同样要清掉
+                orchestration = assistant.orchestration.withoutInvalidReferences(validModelIds),
             )
         },
         ttsProviders = settings.ttsProviders.distinctBy { it.id },
@@ -117,7 +121,60 @@ private fun Settings.withValuesInRange(): Settings = copy(
     },
     ttsProviders = ttsProviders.map { provider -> provider.withValuesInRange() },
     reviewerSetting = reviewerSetting.withValuesInRange(),
+    // 编排阶段的取值收敛挂在助手下面，与其它助手级配置一样在读盘后统一过一遍
+    assistants = assistants.map { assistant ->
+        assistant.copy(orchestration = assistant.orchestration.withValuesInRange())
+    },
 )
+
+/**
+ * 编排阶段里失效的模型引用清空。
+ *
+ * 删掉模型后不清理的话，阶段会一直拿一个已不存在的 id 去生成，只能在运行期报「找不到模型」——
+ * 与助手自身的 `chatModelId` 同一种处理：清成 null 就退回「跟随会话模型」。
+ *
+ * 按 id 去重是为了挡住复制助手时的重复阶段。这里不需要像 `sshTunnels` 那样额外过滤空 id：
+ * `AgentStage.id` 是 [Uuid]，落盘的空串在反序列化阶段就已经失败了，走不到归一化。
+ */
+private fun AssistantOrchestration.withoutInvalidReferences(validModelIds: Set<Uuid>): AssistantOrchestration =
+    copy(
+        stages = stages.distinctBy { it.id }.map { stage ->
+            stage.copy(
+                modelId = stage.modelId?.takeIf { it in validModelIds },
+                reviewer = stage.reviewer.copy(
+                    modelId = stage.reviewer.modelId?.takeIf { it in validModelIds },
+                ),
+            )
+        },
+    )
+
+/**
+ * 编排阶段的取值收敛，与 [ReviewerSetting.withValuesInRange] 同一套做法：只收越界值，合法值原样保留。
+ *
+ * - `maxRetry` 与全局审查共用 0..[MAX_REVIEWER_RETRY]：再多也只是把等待时间翻倍；
+ * - `temperature` 收到 0..2，这是各家 API 通用的量程；
+ * - `maxTokens` 小于 1 等于让模型什么都不说，直接置 null 走默认；上限只拦明显手滑的巨大值。
+ */
+private fun AssistantOrchestration.withValuesInRange(): AssistantOrchestration = copy(
+    stages = stages.map { stage ->
+        stage.copy(
+            temperature = stage.temperature?.coerceIn(MIN_STAGE_TEMPERATURE, MAX_STAGE_TEMPERATURE),
+            maxTokens = stage.maxTokens
+                ?.takeIf { it > 0 }
+                ?.coerceAtMost(MAX_STAGE_MAX_TOKENS),
+            reviewer = stage.reviewer.copy(
+                maxRetry = stage.reviewer.maxRetry.coerceIn(0, MAX_REVIEWER_RETRY),
+            ),
+        )
+    },
+)
+
+/** 编排阶段温度的合法区间 */
+private const val MIN_STAGE_TEMPERATURE = 0f
+private const val MAX_STAGE_TEMPERATURE = 2f
+
+/** 编排阶段输出上限的天花板：超过这个数绝对不是正常配置，只可能是输入错误 */
+private const val MAX_STAGE_MAX_TOKENS = 32_768
 
 /** 审查重试次数上限：再多也只是把用户的等待时间翻倍 */
 private const val MAX_REVIEWER_RETRY = 3
