@@ -42,17 +42,23 @@ import me.rerere.ai.ui.isEmptyInputMessage
 import me.rerere.common.android.Logging
 import me.rerere.rikkahub.AppScope
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.data.ai.AgentOrchestrator
 import me.rerere.rikkahub.data.ai.ChatRequestFactory
 import me.rerere.rikkahub.data.ai.ChatTurnContext
 import me.rerere.rikkahub.data.ai.ConversationMetaGenerator
 import me.rerere.rikkahub.data.ai.MemoryConsolidationScheduler
 import me.rerere.rikkahub.data.ai.ReplyQualityReviewer
 import me.rerere.rikkahub.data.ai.ReplyReviewResult
+import me.rerere.rikkahub.data.ai.StageReviewer
 import me.rerere.rikkahub.data.ai.TranslationHandler
+import me.rerere.rikkahub.data.ai.applyOrchestrationBlocks
+import me.rerere.rikkahub.data.ai.dialogueOnlyText
+import me.rerere.rikkahub.data.ai.dialogueTextWithoutBlocks
 import me.rerere.rikkahub.data.ai.mcp.McpManager
 import me.rerere.rikkahub.data.ai.prompts.buildCompressPrompt
 import me.rerere.rikkahub.data.ai.tools.InvalidMcpServerNamesException
 import me.rerere.rikkahub.data.ai.tools.shouldUseExternalWebSearch
+import me.rerere.rikkahub.data.ai.transformers.ttsVoiceInstruct
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.getAssistantById
@@ -61,6 +67,7 @@ import me.rerere.rikkahub.data.event.AppEvent
 import me.rerere.rikkahub.data.event.AppEventBus
 import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.model.Assistant
+import me.rerere.rikkahub.data.model.AssistantOrchestration
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.data.model.bindConfig
 import me.rerere.rikkahub.data.model.cancelInterruptedTools
@@ -113,6 +120,15 @@ private const val REVIEW_FEEDBACK_MAX_ISSUES = 3
 private const val REVIEW_FEEDBACK_ISSUE_MAX_LENGTH = 150
 private const val REVIEW_FEEDBACK_SUGGESTION_MAX_LENGTH = 240
 
+/**
+ * 编排的块阶段看到的历史条数与单条长度，与 `ReplyQualityReviewer` 的口径一致（6 条 / 300 字）。
+ *
+ * 刻意共用同一组数字：块阶段的模型和审查模型看到的历史越长越容易跑题，而对话期间「这块指令切不切题」
+ * 取决于最近几轮聊了什么，不需要整段历史。
+ */
+private const val ORCHESTRATION_HISTORY_MESSAGES = 6
+private const val ORCHESTRATION_HISTORY_MESSAGE_MAX_LENGTH = 300
+
 data class ChatError(
     val id: Uuid = Uuid.random(),
     val title: String? = null,
@@ -126,6 +142,18 @@ enum class ChatErrorSolution {
     CheckFastModelSettings,
 }
 
+/**
+ * 审查打回时，校正指令面向的是「什么」。
+ *
+ * 单 agent 路径的话术必须逐字保留：它同时承担了「`<tts_voice_control>` 块该怎么写」的复述，
+ * 确定性校验打回时那是模型唯一需要修正的东西。
+ * 编排下不能提块 —— 写块是另一个阶段的事，让主 agent 补块只会在正文里留下一个没人剥离的标签。
+ */
+private enum class ReviewFeedbackTarget {
+    WHOLE_REPLY,
+    DIALOGUE_ONLY,
+}
+
 class ChatService(
     private val context: Application,
     private val appScope: AppScope,
@@ -137,6 +165,8 @@ class ChatService(
     private val translationHandler: TranslationHandler,
     private val metaGenerator: ConversationMetaGenerator,
     private val replyQualityReviewer: ReplyQualityReviewer,
+    private val stageReviewer: StageReviewer,
+    private val agentOrchestrator: AgentOrchestrator,
     val mcpManager: McpManager,
     private val filesManager: FilesManager,
     private val folderRepository: FolderRepository,
@@ -311,6 +341,16 @@ class ChatService(
                 return
             }
 
+        // 启用编排的助手走「按阶段审查」：对话阶段有自己的 reviewer，块阶段的重试在编排器内部完成。
+        // 全局 reviewerSetting 在这里**不再生效**：它硬性要求正文之后恰好一个 `tts_voice_control` 块
+        // （见 ReplyQualityReviewer.checkVoiceControlBlock），而编排恰恰把写块搬给了独立的块阶段，
+        // 两套规则同时跑必然互相判否，最后变成「永远在重生成」。
+        val orchestration = settings.getAssistantOf(conversation).orchestration
+        if (orchestration.enabled) {
+            notifyOrchestratedGenerationDone(session, conversationId, settings, conversation, reply, orchestration)
+            return
+        }
+
         if (!settings.reviewerSetting.enabled) {
             _generationDoneFlow.emit(conversationId)
             return
@@ -333,6 +373,85 @@ class ChatService(
     }
 
     /**
+     * 编排形态下的生成完成出口：只审「主对话阶段」那一段。
+     *
+     * 与单 agent 路径的三点差异，都是为了不在编排下做出错误判断：
+     * 1. 审查对象是**对话正文**（去掉编排写回的可见块），不是整条消息 —— 写回的块是编排自己的产物，
+     *    而阶段审查的标准里「出现标签块即不合格」针对的是模型自己往正文里写标签；
+     * 2. 审查用阶段自己的 prompt / 模型 / 重试上限，不用全局 `reviewerSetting`；
+     * 3. 块阶段**不在这里审查**：它们的重试已经在 [AgentOrchestrator] 内部完成，重复审一遍只会再烧一次请求。
+     *
+     * 对话阶段没开审查时直接放行。这里也刻意**不**回退到全局 reviewer：那套规则要求正文里有 tts 块，
+     * 而编排的正文阶段被明确要求「不要写任何块」。「这个阶段不审」是用户的选择，不是需要兜底的故障。
+     *
+     * 重试状态仍复用 [ConversationSession] 的单槽字段（一个会话同时只有一条待重生成的回复）：
+     * 编排里只有对话阶段会打回重生成，块阶段的重试在编排器内部同步完成，两者不会争用同一组字段。
+     */
+    private suspend fun notifyOrchestratedGenerationDone(
+        session: ConversationSession,
+        conversationId: Uuid,
+        settings: Settings,
+        conversation: Conversation,
+        reply: UIMessage,
+        orchestration: AssistantOrchestration,
+    ) {
+        val stage = orchestration.primaryStage()
+        if (stage == null || !stage.reviewer.enabled) {
+            session.resetReviewRetryState()
+            _generationDoneFlow.emit(conversationId)
+            return
+        }
+
+        // 空内容交给上游的错误处理，不在这里判不合格（与单 agent 路径同一个口径）
+        val dialogue = reply.dialogueTextWithoutBlocks(orchestration).trim()
+        if (dialogue.isBlank()) {
+            _generationDoneFlow.emit(conversationId)
+            return
+        }
+
+        val result = stageReviewer.review(
+            settings = settings,
+            conversation = conversation,
+            stage = stage,
+            dialogue = dialogue,
+            history = orchestrationHistory(conversation, reply.id),
+            // 对话阶段的产出就是正文本身，`{output}` 占位符没有独立内容可填；
+            // 语气（若有）作为补充材料传进去，审查才有机会判断「正文与语气是否一致」
+            output = reply.ttsVoiceInstruct(),
+        )
+        if (result.passed) {
+            session.resetReviewRetryState()
+            _generationDoneFlow.emit(conversationId)
+            return
+        }
+
+        handleReviewFailure(
+            session = session,
+            conversationId = conversationId,
+            settings = settings,
+            reply = reply,
+            result = result,
+            // 上限取阶段自己的配置：归一化（0..3）在 SettingsNormalization 里做过
+            maxRetry = stage.reviewer.maxRetry,
+            origin = "Dialogue stage review",
+            feedbackTarget = ReviewFeedbackTarget.DIALOGUE_ONLY,
+        )
+    }
+
+    /**
+     * 块阶段看到的历史：与 [ReplyQualityReviewer] 同一口径（最近 6 条、每条 300 字，带 `[ROLE]: ` 前缀）。
+     *
+     * 两条链路喂给模型的「上下文」长得一样，判断「这块指令切不切题」时口径才不会互相打脸。
+     */
+    private fun orchestrationHistory(conversation: Conversation, replyId: Uuid): String =
+        conversation.currentMessages
+            .filterNot { it.id == replyId }
+            .takeLast(ORCHESTRATION_HISTORY_MESSAGES)
+            .joinToString(separator = "\n") {
+                it.summaryAsText(maxLength = ORCHESTRATION_HISTORY_MESSAGE_MAX_LENGTH)
+            }
+
+    /**
      * 审查不通过时的统一处理：占一次重生成机会并让 UI 提示，
      * 达到上限就记日志并放行交付。
      *
@@ -345,12 +464,19 @@ class ChatService(
         settings: Settings,
         reply: UIMessage,
         result: ReplyReviewResult,
+        /**
+         * 这次审查允许的重试上限。默认取全局配置，编排的对话阶段传 `stage.reviewer.maxRetry` ——
+         * 阶段审查有自己的预算，不该被「整条回复审几次」那个数字限制。
+         */
+        maxRetry: Int = settings.reviewerSetting.maxRetry,
+        /** 日志里这条链路的名称，用来把「整条回复审查」与「对话阶段审查」分开看 */
+        origin: String = "Review",
+        /** 校正指令面向的对象，见 [ReviewFeedbackTarget] */
+        feedbackTarget: ReviewFeedbackTarget = ReviewFeedbackTarget.WHOLE_REPLY,
     ) {
         val reason = (result.issues.firstOrNull() ?: result.suggestion)
             .ifBlank { "score ${result.score}" }
             .take(REVIEW_RETRY_REASON_MAX_LENGTH)
-        val maxRetry = settings.reviewerSetting.maxRetry
-        val origin = "Review"
         if (session.currentReviewRetryCount < maxRetry) {
             // attempt 是「本次是第几次重试」的语义（从 1 开始），先算好再 mark：
             // markPendingReviewRetry 会把计数 +1，日志和 toast 都取同一个局部值，
@@ -361,7 +487,7 @@ class ChatService(
                 "$origin failed (score ${result.score}), regenerating ${reply.id} " +
                     "($attempt/$maxRetry): $reason",
             )
-            session.markPendingReviewRetry(reply.id, buildReviewFeedback(result))
+            session.markPendingReviewRetry(reply.id, buildReviewFeedback(result, feedbackTarget))
             appEventBus.tryEmit(
                 AppEvent.ReplyReviewRetry(
                     conversationId = conversationId,
@@ -388,8 +514,15 @@ class ChatService(
      *
      * 固定段落里把 `<tts_voice_control>` 的约定再复述一遍：确定性校验打回时，
      * 这条约定就是模型这次唯一需要修正的东西。
+     *
+     * [target] 换成 [ReviewFeedbackTarget.DIALOGUE_ONLY] 时（编排的对话阶段），固定段落不再提块：
+     * 那一段被明确要求「不要写任何块」，再要求它补块只会在正文里留下一个没人剥离的标签。
+     * 默认值的输出与改造前**逐字一致**，老助手的打回话术不变。
      */
-    private fun buildReviewFeedback(result: ReplyReviewResult): String {
+    private fun buildReviewFeedback(
+        result: ReplyReviewResult,
+        target: ReviewFeedbackTarget = ReviewFeedbackTarget.WHOLE_REPLY,
+    ): String {
         val suggestion = result.suggestion.trim().take(REVIEW_FEEDBACK_SUGGESTION_MAX_LENGTH)
         // issues 为空时用 suggestion 兜底，至少让模型看到一条「必须修正的问题」
         val issues = result.issues
@@ -400,7 +533,12 @@ class ChatService(
             .ifEmpty { listOfNotNull(suggestion.takeIf { it.isNotBlank() }) }
         return buildString {
             appendLine("<review_feedback>")
-            appendLine("你刚刚那版回复没有通过系统自检，请把整条回复重新生成一遍。")
+            appendLine(
+                when (target) {
+                    ReviewFeedbackTarget.WHOLE_REPLY -> "你刚刚那版回复没有通过系统自检，请把整条回复重新生成一遍。"
+                    ReviewFeedbackTarget.DIALOGUE_ONLY -> "你刚刚那段对话文本没有通过系统自检，请把对话文本重新生成一遍。"
+                }
+            )
             if (issues.isNotEmpty()) {
                 appendLine("必须修正的问题：")
                 issues.forEach { append("- ").appendLine(it) }
@@ -409,11 +547,20 @@ class ChatService(
             if (suggestion.isNotBlank() && result.issues.isNotEmpty()) {
                 append("修改要求：").appendLine(suggestion)
             }
-            appendLine(
-                "如果原文里有 <tts_voice_control> 块：整条回复有且只能有一个，必须在正文之后单独成段，" +
-                    "块内用一段自然语言写清语气、音量、语速、音色、气息、情绪。"
-            )
-            appendLine("只输出修正后的正文与那个块，不要解释、不要道歉、不要提到这段提示。")
+            when (target) {
+                ReviewFeedbackTarget.WHOLE_REPLY -> {
+                    appendLine(
+                        "如果原文里有 <tts_voice_control> 块：整条回复有且只能有一个，必须在正文之后单独成段，" +
+                            "块内用一段自然语言写清语气、音量、语速、音色、气息、情绪。"
+                    )
+                    appendLine("只输出修正后的正文与那个块，不要解释、不要道歉、不要提到这段提示。")
+                }
+
+                ReviewFeedbackTarget.DIALOGUE_ONLY -> {
+                    appendLine("只输出对话文本：不要输出任何标签块（包括 <tts_voice_control>），不要括号、旁白、动作或心理描写。")
+                    appendLine("只输出修正后的对话文本，不要解释、不要道歉、不要提到这段提示。")
+                }
+            }
             append("</review_feedback>")
         }
     }
@@ -1053,6 +1200,10 @@ class ChatService(
                     target = replyTargetOf(session.state.value, regenerateNodeId = null)
                     session.replyMessageId.value = target.continuedMessageId
                 }
+
+                // 编排的块阶段（多 Agent 串联）：主 agent 只产出对话正文，写块交给后面的阶段串行完成。
+                // 必须放在 finally 的 finishGeneration() 之前 —— 块要和正文一起落盘，才算同一条回复的一部分。
+                runOrchestrationBlockStages(session, settings, conversationId, finishReason)
             } finally {
                 withContext(NonCancellable) {
                     session.processingStatus.value = null
@@ -1101,6 +1252,69 @@ class ChatService(
             return TurnResult.Failed
         }
     }
+
+    /**
+     * 编排的块阶段：拿主对话阶段的正文，再串行跑每个块阶段（语音导演指令等），把结果写回同一条回复。
+     *
+     * 三条取舍：
+     * 1. **不改变这一轮的结果**：块只是附加信息，任何失败/超时都只记日志 —— 回复本身已经交付，
+     *    不能因为「语音指令没生成出来」把一轮成功的对话变成失败；
+     * 2. **[CancellationException] 一律 rethrow**：用户点停止时必须立刻停，不能被「不中断整轮」的兜底吞掉；
+     * 3. **不动状态机**：这里仍在生成任务里、任务槽没清空，界面自然认为「还在生成」。`processingStatus`
+     *    只用于 OCR / 网络重试这类临时提示，生成中本来就是 null，不需要也不该在这里写它。
+     *
+     * 未启用编排的助手（所有老助手）在第一道判断就返回，行为与改造前完全一致。
+     */
+    private suspend fun runOrchestrationBlockStages(
+        session: ConversationSession,
+        settings: Settings,
+        conversationId: Uuid,
+        finishReason: AgentFinishReason?,
+    ) {
+        // 等工具审批 / 中途压缩：这一轮还没结束，正文之后还会被续写，此刻写块等于给半截内容配音。
+        // 达到步数上限时正文往往为空，编排器自己会跳过，不必在这里单独判断
+        if (finishReason is AgentFinishReason.AwaitingApproval || finishReason == AgentFinishReason.Paused) return
+
+        val conversation = session.state.value
+        val orchestration = settings.getAssistantOf(conversation).orchestration
+        if (!orchestration.enabled) return
+        if (orchestration.blockStages().isEmpty()) return
+
+        val reply = reviewTargetOf(session) ?: return
+        // 写回要「原地替换这条消息」，所以必须按 id 找到它所在的节点；找不到就作罢，宁可少写也不要写错位置
+        val nodeId = replyNodeIdOf(conversation, reply.id) ?: return
+        // 此刻消息里还只有对话正文（块的写回在下面），所以 Text 拼起来就是「这一轮说了什么」
+        val dialogue = reply.dialogueOnlyText().trim()
+        if (dialogue.isBlank()) return
+
+        try {
+            val result = agentOrchestrator.runBlockStages(
+                settings = settings,
+                conversation = conversation,
+                orchestration = orchestration,
+                dialogue = dialogue,
+                history = orchestrationHistory(conversation, reply.id),
+            )
+            if (result.blocks.isNotEmpty()) {
+                val updated = reply.applyOrchestrationBlocks(result.blocks)
+                if (updated != reply) {
+                    session.update { it.upsertMessage(nodeId, updated) }
+                    session.flush()
+                }
+            }
+            if (result.failures.isNotEmpty()) {
+                Log.w(TAG, "orchestration partial failures[conv=$conversationId]: ${result.failures}")
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "orchestration failed[conv=$conversationId]", e)
+        }
+    }
+
+    /** 这条消息所在的节点；写回时要靠它原地替换而不是新开一个节点 */
+    private fun replyNodeIdOf(conversation: Conversation, messageId: Uuid): Uuid? =
+        conversation.messageNodes.firstOrNull { node -> node.messages.any { it.id == messageId } }?.id
 
     // 模型不支持工具调用时，搜索和 MCP 工具都不会生效，提醒一下
     private fun warnIfToolsUnavailable(turn: ChatTurnContext, conversationId: Uuid) {

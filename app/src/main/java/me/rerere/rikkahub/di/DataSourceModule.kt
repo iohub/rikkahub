@@ -15,11 +15,13 @@ import me.rerere.mediagen.provider.MediaGenerationManager
 import me.rerere.rikkahub.AppScope
 import me.rerere.rikkahub.BuildConfig
 import me.rerere.rikkahub.data.ai.AIRequestInterceptor
+import me.rerere.rikkahub.data.ai.AgentOrchestrator
 import me.rerere.rikkahub.data.ai.ConversationMetaGenerator
 import me.rerere.rikkahub.data.ai.MemoryConsolidationScheduler
 import me.rerere.rikkahub.data.ai.MemoryConsolidator
 import me.rerere.rikkahub.data.ai.ReplyQualityReviewer
 import me.rerere.rikkahub.data.ai.RequestLoggingInterceptor
+import me.rerere.rikkahub.data.ai.StageReviewer
 import me.rerere.rikkahub.data.ai.TranslationHandler
 import me.rerere.rikkahub.data.ai.UsageRecorder
 import me.rerere.rikkahub.data.ai.account.ProviderAccountManager
@@ -170,6 +172,19 @@ val dataSourceModule = module {
 
     single {
         ReplyQualityReviewer(providerManager = get(), usageRecorder = get())
+    }
+
+    // 编排的阶段审查与全局审查是两套东西（审查对象、prompt、重试预算都不同），各自单例、互不共享状态
+    single {
+        StageReviewer(providerManager = get(), usageRecorder = get())
+    }
+
+    single {
+        AgentOrchestrator(
+            providerManager = get(),
+            usageRecorder = get(),
+            stageReviewer = get(),
+        )
     }
 
     single<OkHttpClient> {

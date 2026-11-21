@@ -183,8 +183,11 @@ private fun UIMessagePart.Reasoning.stripTtsVoiceControl(): UIMessagePart.Reason
  * 合并 metadata: 同 key 用新的, 其它 key 原样保留。
  *
  * 与 `ai` 模块 `StreamChunkHandler.mergeMetadata` 语义一致(那里是 private, 这里补一份等价实现)。
+ *
+ * `internal` 而不是 `private`: 编排(见 `AgentOrchestrationApplier`)把块阶段的语气写回 metadata 时
+ * 必须与这里用同一套合并规则 —— 各写一份, 「同 key 覆盖、其它 key 保留」的语义迟早会长歪。
  */
-private fun JsonObject?.mergeWith(other: JsonObject?): JsonObject? = when {
+internal fun JsonObject?.mergeWith(other: JsonObject?): JsonObject? = when {
     this == null -> other
     other == null -> this
     else -> JsonObject(this + other)

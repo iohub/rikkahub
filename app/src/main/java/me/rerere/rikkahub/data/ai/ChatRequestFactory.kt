@@ -25,7 +25,11 @@ import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.ai.ui.limitContext
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.data.ai.prompts.ORCHESTRATION_TTS_VOICE_TAG
+import me.rerere.rikkahub.data.ai.prompts.OrchestrationStagePresetIds
 import me.rerere.rikkahub.data.ai.prompts.buildMemoryPrompt
+import me.rerere.rikkahub.data.ai.prompts.fillOrchestrationPrompt
+import me.rerere.rikkahub.data.ai.prompts.findOrchestrationStagePreset
 import me.rerere.rikkahub.data.ai.tools.ChatToolFactory
 import me.rerere.rikkahub.data.ai.tools.local.LocalToolOption
 import me.rerere.rikkahub.data.ai.transformers.Base64ImageToLocalFileTransformer
@@ -370,6 +374,33 @@ class ChatRequestFactory(
                     append(effectiveSystemPrompt)
                 }
 
+                // 编排的对话阶段指令（多 Agent 串联的第一段）：这一段只让主 agent 产出对话正文，
+                // 写 `<tts_voice_control>` 这类块的职责整体搬给了块阶段（见 AgentOrchestrator）。
+                // 位置紧跟在人格设定之后、记忆/工具之前：后面还有记忆、工具 prompt、TTS 规范这几大段材料，
+                // 指令离人格越近越不容易被冲淡。
+                // 未启用编排的助手（所有老助手）这里完全跳过，system prompt 逐字节不变。
+                // `{dialogue}` / `{history}` 传空串：对话正文正是这一段要产出的东西，此时还不存在。
+                val orchestration = assistant.orchestration
+                val primaryStage = if (orchestration.enabled) orchestration.primaryStage() else null
+                // 阶段留空时用预设默认正文（`AgentStage.prompt` 的契约就是「留空则用预设」）。
+                // 这里不能只是「空就不注入」：内置 TTS 规范已经被编排接管（见下面的 TTS 门控），
+                // 再不给「只输出对话文本」的指令，主 agent 就完全失去约束了。
+                val primaryStagePrompt = primaryStage?.let { stage ->
+                    stage.prompt.takeIf { it.isNotBlank() }
+                        ?: findOrchestrationStagePreset(OrchestrationStagePresetIds.DIALOGUE)?.prompt
+                }
+                if (primaryStagePrompt != null) {
+                    appendLine()
+                    append(
+                        primaryStagePrompt.fillOrchestrationPrompt(
+                            dialogue = "",
+                            history = "",
+                            charName = assistant.name,
+                            userName = turn.settings.displaySetting.userNickname,
+                        )
+                    )
+                }
+
                 // 记忆
                 if (assistant.enableMemory && !assistant.promptInjectionOverride.isMemoryDisabled) {
                     appendLine()
@@ -383,8 +414,8 @@ class ChatRequestFactory(
                     }
                 }
                 // TTS 语气控制块：重构后它不是工具提示词，所以不受 isToolPromptsDisabled 门控，
-                // 只看「助手开了 TTS 本地工具」与注入总开关
-                if (LocalToolOption.Tts in assistant.localTools && !override.disableAll) {
+                // 只看「助手开了 TTS 本地工具」「注入总开关」以及「编排有没有接管这个块」。
+                if (assistant.injectsTtsVoicePrompt()) {
                     appendLine()
                     append(ttsVoiceControlPrompt(ttsProviderGuidance(turn)))
                 }
@@ -510,6 +541,24 @@ internal fun backgroundTextGenerationParams(
     customBody = model.customBodies,
     sessionId = sessionId.toString(),
 )
+
+/**
+ * 是否把内置的 `tts_voice_control` 规范注入 system prompt。
+ *
+ * 三条门控：
+ * 1. 助手开了 TTS 本地工具（不开就没人消费这个块）；
+ * 2. 注入总开关没被关掉；
+ * 3. 编排**没有**接管这个标签 —— 编排把写块搬给了独立的块阶段时，两处都注入规范会让主 agent
+ *    既被要求「不要写块」又被要求「必须写块」，最后谁写出来都不对。
+ *
+ * 第 3 条必须 `enabled &&` 一起判断：`AssistantOrchestration.ownsTag` 只看阶段配置、不看总开关，
+ * 关掉编排的助手（阶段配置还留着）照样会「认领」标签。少了这一半，用户关掉编排后会同时失去内置规范
+ * 和块阶段的产出 —— 语气控制整条消失。
+ */
+internal fun Assistant.injectsTtsVoicePrompt(): Boolean =
+    LocalToolOption.Tts in localTools &&
+        !promptInjectionOverride.disableAll &&
+        !(orchestration.enabled && orchestration.ownsTag(ORCHESTRATION_TTS_VOICE_TAG))
 
 /**
  * 请求模型失败时的重试策略。
