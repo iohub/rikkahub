@@ -103,9 +103,13 @@ fun AssistantOrchestrationPage(id: String) {
     val providers by vm.providers.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
-    // 设置还没读出来时 vm.assistant 是一个占位对象（id 是随机生成的），拿它对不上就说明还没加载好
     val assistantId = remember(id) { runCatching { Uuid.parse(id) }.getOrNull() }
-    val loaded = settings.init && assistantId != null && assistant.id == assistantId
+    // `Settings.init` 的语义是反的：true = 首选项还没读盘完成，此时拿到的是 `Settings.dummy()` 占位值；
+    // false = 已经加载完成（见 `PreferencesStore.awaitLoaded` 等的是 `!init`）。
+    // 千万不要把 `settings.init` 当成「已加载」来用，否则加载完成后会一直停在加载态。
+    val loading = settings.init
+    // 加载完成后 vm.assistant 还是占位对象（id 随机生成）就说明这个 id 的助手已经不存在了
+    val missing = !loading && (assistantId == null || assistant.id != assistantId)
 
     Scaffold(
         topBar = {
@@ -123,25 +127,32 @@ fun AssistantOrchestrationPage(id: String) {
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         containerColor = CustomColors.topBarColors.containerColor,
     ) { innerPadding ->
-        if (!loaded) {
-            Box(
+        when {
+            // 首选项还在读盘：先转圈。不能拿占位 Assistant() 渲染，否则改动会写到一个不存在的助手 id 上
+            loading -> Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding),
                 contentAlignment = Alignment.Center,
             ) {
-                if (settings.init) {
-                    Text(
-                        text = stringResource(R.string.assistant_orchestration_missing_assistant),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                } else {
-                    CircularProgressIndicator()
-                }
+                CircularProgressIndicator()
             }
-        } else {
-            AssistantOrchestrationContent(
+
+            // 加载完成却对不上这个 id：助手已被删除，给一句说明而不是留空白
+            missing -> Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = stringResource(R.string.assistant_orchestration_missing_assistant),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            else -> AssistantOrchestrationContent(
                 innerPadding = innerPadding,
                 assistant = assistant,
                 providers = providers,
