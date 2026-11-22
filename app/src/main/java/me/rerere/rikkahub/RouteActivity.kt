@@ -134,6 +134,7 @@ import me.rerere.rikkahub.ui.pages.setting.SettingMediaPage
 import me.rerere.rikkahub.ui.pages.setting.SettingMediaProviderDetailPage
 import me.rerere.rikkahub.ui.pages.setting.SettingRemoteTTSPage
 import me.rerere.rikkahub.ui.pages.setting.SettingSpeechPage
+import me.rerere.rikkahub.ui.pages.setting.SettingGlobalSshKeyPage
 import me.rerere.rikkahub.ui.pages.setting.SettingSshTunnelDetailPage
 import me.rerere.rikkahub.ui.pages.setting.SettingSshTunnelPage
 import me.rerere.rikkahub.ui.pages.setting.SettingWebPage
@@ -570,6 +571,10 @@ class RouteActivity : ComponentActivity() {
                                 SettingSshTunnelDetailPage(key.tunnelId)
                             }
 
+                            entry<Screen.SettingGlobalSshKey> {
+                                SettingGlobalSshKeyPage()
+                            }
+
                             entry<Screen.Debug> {
                                 DebugPage()
                             }
@@ -832,6 +837,10 @@ sealed interface Screen : NavKey {
     /** [tunnelId] 为空串表示新建隧道 */
     @Serializable
     data class SettingSshTunnelDetail(val tunnelId: String) : Screen
+
+    /** 全局 SSH 密钥: 隧道与工作区 SSH 在未自带私钥时回退使用它 */
+    @Serializable
+    data object SettingGlobalSshKey : Screen
 
     @Serializable
     data object Debug : Screen

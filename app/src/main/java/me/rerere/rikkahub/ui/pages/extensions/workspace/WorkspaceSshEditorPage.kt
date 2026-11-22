@@ -189,6 +189,7 @@ fun WorkspaceSshEditorPage(id: String?) {
                         onPassphraseChange = { value -> vm.update { it.copy(passphrase = value) } },
                         passwordPlaceholder = savedKeep.takeIf { state.hasSavedPassword },
                         privateKeyPlaceholder = savedKeep.takeIf { state.hasSavedPrivateKey },
+                        globalKeyConfigured = state.globalKeyConfigured,
                     )
                 }
             }
@@ -199,6 +200,7 @@ fun WorkspaceSshEditorPage(id: String?) {
                     enabled = editable,
                     onUpdate = { transform -> vm.update { it.copy(jumpHost = transform(it.jumpHost)) } },
                     onImportPrivateKey = { jumpPrivateKeyPicker.launch(arrayOf("*/*")) },
+                    globalKeyConfigured = state.globalKeyConfigured,
                 )
             }
 
@@ -305,6 +307,7 @@ private fun JumpHostSection(
     enabled: Boolean,
     onUpdate: ((JumpHostForm) -> JumpHostForm) -> Unit,
     onImportPrivateKey: () -> Unit,
+    globalKeyConfigured: Boolean,
 ) {
     val savedKeep = stringResource(R.string.workspace_ssh_editor_saved_keep)
     CardGroup(title = { Text(stringResource(R.string.workspace_ssh_editor_jump_host)) }) {
@@ -360,6 +363,7 @@ private fun JumpHostSection(
             onPassphraseChange = { value -> onUpdate { it.copy(passphrase = value) } },
             passwordPlaceholder = savedKeep.takeIf { jump.hasSavedPassword },
             privateKeyPlaceholder = savedKeep.takeIf { jump.hasSavedPrivateKey },
+            globalKeyConfigured = globalKeyConfigured,
         )
     }
 }
@@ -378,6 +382,7 @@ private fun CardGroupScope.authItems(
     onPassphraseChange: (String) -> Unit,
     passwordPlaceholder: String?,
     privateKeyPlaceholder: String?,
+    globalKeyConfigured: Boolean,
 ) {
     formItem(headlineContent = { Text(stringResource(R.string.workspace_ssh_editor_auth_method)) }) {
         val options = listOf(
@@ -410,7 +415,15 @@ private fun CardGroupScope.authItems(
         SshAuthType.PRIVATE_KEY -> {
             formItem(
                 headlineContent = { Text(stringResource(R.string.workspace_ssh_editor_private_key)) },
-                supportingContent = { Text(stringResource(R.string.workspace_ssh_editor_private_key_desc)) },
+                supportingContent = {
+                    Column {
+                        Text(stringResource(R.string.workspace_ssh_editor_private_key_desc))
+                        // 没有已保存的私钥时, 留空就会用设置里的全局密钥
+                        if (globalKeyConfigured && privateKeyPlaceholder == null) {
+                            Text(stringResource(R.string.ssh_global_key_using_hint))
+                        }
+                    }
+                },
             ) {
                 OutlinedTextField(
                     enabled = enabled,

@@ -105,6 +105,7 @@ val viewModelModule = module {
         WorkspaceSshEditorVM(
             id = it.getOrNull(),
             repository = get(),
+            settingsStore = get(),
         )
     }
     viewModelOf(::FavoriteVM)

@@ -121,7 +121,13 @@ fun SettingSshTunnelDetailPage(tunnelId: String) {
     var host by remember(tunnelId) { mutableStateOf(existing?.host.orEmpty()) }
     var portText by remember(tunnelId) { mutableStateOf((existing?.port ?: 22).toString()) }
     var username by remember(tunnelId) { mutableStateOf(existing?.username.orEmpty()) }
-    var authType by remember(tunnelId) { mutableStateOf(existing?.authType ?: SshAuthType.PASSWORD) }
+    // 新建隧道时配了全局密钥就默认走私钥认证: 私钥留空, 由连接层回退到全局密钥; 已有隧道保持原值
+    var authType by remember(tunnelId) {
+        mutableStateOf(
+            existing?.authType
+                ?: if (settings.sshGlobalKey.isConfigured) SshAuthType.PRIVATE_KEY else SshAuthType.PASSWORD
+        )
+    }
     // 凭据输入初始为空: 留空表示沿用已保存的密文
     var password by remember(tunnelId) { mutableStateOf("") }
     var privateKey by remember(tunnelId) { mutableStateOf("") }
@@ -255,8 +261,10 @@ fun SettingSshTunnelDetailPage(tunnelId: String) {
         testing = true
         scope.launch {
             try {
-                // probe 是阻塞的网络调用, 必须离开主线程
-                val result = withContext(Dispatchers.IO) { sshPool.probe(draft.toConnectionConfig()) }
+                // probe 是阻塞的网络调用, 必须离开主线程; 全局密钥要一起传, 才能和真实连接行为一致
+                val result = withContext(Dispatchers.IO) {
+                    sshPool.probe(draft.toConnectionConfig(settings.sshGlobalKey))
+                }
                 hostKey = result.hostKey
                 toaster.show(
                     context.getString(R.string.ssh_tunnel_test_success, result.hostKey.fingerprint),
@@ -646,10 +654,15 @@ fun SettingSshTunnelDetailPage(tunnelId: String) {
                         SshAuthType.PRIVATE_KEY -> {
                             formItem(
                                 headlineContent = { Text(stringResource(R.string.ssh_tunnel_auth_private_key)) },
-                                supportingContent = if (existing?.encryptedPrivateKey != null) {
-                                    { Text(stringResource(R.string.ssh_tunnel_secret_keep)) }
-                                } else {
-                                    null
+                                supportingContent = when {
+                                    existing?.encryptedPrivateKey != null -> {
+                                        { Text(stringResource(R.string.ssh_tunnel_secret_keep)) }
+                                    }
+                                    // 本隧道没存私钥: 留空就会用设置里的全局密钥, 提前说明免得以为填漏了
+                                    settings.sshGlobalKey.isConfigured -> {
+                                        { Text(stringResource(R.string.ssh_global_key_using_hint)) }
+                                    }
+                                    else -> null
                                 },
                             ) {
                                 OutlinedTextField(

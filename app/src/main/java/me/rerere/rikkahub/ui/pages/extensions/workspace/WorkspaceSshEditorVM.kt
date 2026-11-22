@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.model.SshJumpHostDraft
 import me.rerere.rikkahub.data.model.SshWorkspaceDraft
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
@@ -21,8 +22,22 @@ import me.rerere.workspace.ssh.SshUnknownHostKeyException
 class WorkspaceSshEditorVM(
     private val id: String?,
     private val repository: WorkspaceRepository,
+    settingsStore: SettingsStore,
 ) : ViewModel() {
-    private val _state = MutableStateFlow(WorkspaceSshEditorState(loading = id != null))
+    /**
+     * 设置里是否配了全局 SSH 密钥。
+     *
+     * 只保留一个布尔值, 密钥材料留在设置里; 新建工作区时据此默认走私钥认证 (私钥留空 => 回退全局密钥)。
+     */
+    private val globalKeyConfigured = settingsStore.currentGlobalSshKey.isConfigured
+
+    private val _state = MutableStateFlow(
+        WorkspaceSshEditorState(
+            loading = id != null,
+            authType = if (id == null && globalKeyConfigured) SshAuthType.PRIVATE_KEY else SshAuthType.PASSWORD,
+            globalKeyConfigured = globalKeyConfigured,
+        )
+    )
     val state = _state.asStateFlow()
 
     val isNew: Boolean = id == null
@@ -256,6 +271,8 @@ data class WorkspaceSshEditorState(
     val port: String = "22",
     val username: String = "",
     val authType: SshAuthType = SshAuthType.PASSWORD,
+    /** 设置里是否配置了全局 SSH 密钥: 私钥留空时会回退到它, 界面据此给出提示 */
+    val globalKeyConfigured: Boolean = false,
     val password: String = "",
     val privateKey: String = "",
     val passphrase: String = "",
