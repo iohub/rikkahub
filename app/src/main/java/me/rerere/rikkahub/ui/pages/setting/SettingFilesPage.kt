@@ -59,6 +59,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -83,6 +84,7 @@ import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.ui.components.ai.ExtensionEmptyState
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.components.ui.CardGroup
+import me.rerere.rikkahub.ui.components.ui.attachmentImageRequestBuilder
 import me.rerere.rikkahub.ui.context.LocalToaster
 import me.rerere.rikkahub.ui.theme.CustomColors
 import me.rerere.rikkahub.utils.fileSizeToString
@@ -371,6 +373,7 @@ private fun FileItem(
     fileOnDisk: File,
     onDelete: () -> Unit,
 ) {
+    val context = LocalContext.current
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(FileItemCorner),
@@ -388,7 +391,7 @@ private fun FileItem(
             ) {
                 if (file.mimeType.startsWith("image/")) {
                     AsyncImage(
-                        model = fileOnDisk,
+                        model = attachmentImageRequestBuilder(context, fileOnDisk).build(),
                         contentDescription = file.displayName,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop

@@ -9,6 +9,7 @@ import android.util.Base64OutputStream
 import android.webkit.MimeTypeMap
 import androidx.core.net.toUri
 import me.rerere.ai.ui.UIMessagePart
+import java.io.BufferedInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
@@ -60,12 +61,11 @@ fun UIMessagePart.Image.encodeBase64(withPrefix: Boolean = true): Result<Encoded
             if (!file.exists()) {
                 throw IllegalArgumentException("File does not exist: ${this.url}")
             }
-            // 图片可能已落盘加密（AttachmentCipher）：先解出明文再嗅探 mime / 解码，旧明文文件直通
-            val plain = AttachmentCipher.readBytesDecrypted(file)
-                ?: throw IllegalStateException("Failed to read image: ${this.url}")
-            val mimeType = guessMimeType(plain, file.name).getOrThrow()
+            // 图片可能已落盘加密（AttachmentCipher）：mime 嗅探与解码都走「按需新开解密流」，
+            // 不把整份明文读进内存（密文 N+21 与明文 N 同时驻留会让峰值翻倍，20MB 照片直接 OOM）
+            val mimeType = file.guessMimeType().getOrThrow()
             // 统一进行压缩处理
-            val (encoded, outputMimeType) = file.compressAndEncode(plain, mimeType)
+            val (encoded, outputMimeType) = file.compressAndEncode(mimeType)
             EncodedImage(
                 base64 = if (withPrefix) "data:$outputMimeType;base64,$encoded" else encoded,
                 mimeType = outputMimeType
@@ -120,19 +120,20 @@ fun UIMessagePart.Audio.encodeBase64(withPrefix: Boolean = true): Result<String>
 }
 
 /**
- * 把图片压缩成 JPEG 再 base64。[plain] 是**已解密**的原图字节，[File] 只用来派生缓存 key
- * （路径 + mtime + size），所以加密文件与明文文件的缓存互不干扰。
+ * 把图片压缩成 JPEG 再 base64。
+ *
+ * 全程按流处理：原图可能已落盘加密，明文只在解码/编码时短暂存在于位图与输出缓冲里。
+ * 缓存 key 仍由[File]的路径 + mtime + size 派生，所以加密文件与明文文件的缓存互不干扰。
  */
 private fun File.compressAndEncode(
-    plain: ByteArray,
     mimeType: String,
     maxDimension: Int = 10_000,
     maxPixels: Long = 16_000_000L,
     quality: Int = 85
 ): Pair<String, String> {
-    // GIF 保持原样（可能是动图）
+    // GIF 保持原样（可能是动图）：直接流式 base64，不把它整份读进内存
     if (mimeType == "image/gif") {
-        return Pair(plain.encodeToBase64Streaming(), mimeType)
+        return Pair(encodeToBase64Streaming(), mimeType)
     }
 
     // 历史图片每轮请求都会重新编码，命中缓存时跳过解码和 JPEG 重编码
@@ -141,17 +142,20 @@ private fun File.compressAndEncode(
     ImageEncodeCache.get(cacheKey)
         ?.let { cached -> return Pair(cached.encodeToBase64Streaming(), "image/jpeg") }
 
-    val jpegBytes = compressToJpeg(plain, maxDimension = maxDimension, maxPixels = maxPixels, quality = quality)
+    val jpegBytes = compressToJpeg(maxDimension = maxDimension, maxPixels = maxPixels, quality = quality)
     ImageEncodeCache.put(cacheKey, jpegBytes)
     return Pair(jpegBytes.encodeToBase64Streaming(), "image/jpeg")
 }
 
-private fun File.compressToJpeg(plain: ByteArray, maxDimension: Int, maxPixels: Long, quality: Int): ByteArray {
+private fun File.compressToJpeg(maxDimension: Int, maxPixels: Long, quality: Int): ByteArray {
     // 读取图片尺寸（解析失败时 outWidth/outHeight 为 -1，inSampleSize 会退化为 1）
     val options = BitmapFactory.Options().apply {
         inJustDecodeBounds = true
     }
-    BitmapFactory.decodeByteArray(plain, 0, plain.size, options)
+    // 解密流不可 seek（CipherInputStream），读完必须重开一条新流；每条流用 use 及时释放
+    openDecryptedStream().use { input ->
+        BitmapFactory.decodeStream(input, null, options)
+    }
 
     options.inSampleSize = calculateImageInSampleSize(
         width = options.outWidth,
@@ -161,9 +165,10 @@ private fun File.compressToJpeg(plain: ByteArray, maxDimension: Int, maxPixels: 
     )
     options.inJustDecodeBounds = false
 
-    val bitmap = BitmapFactory.decodeByteArray(plain, 0, plain.size, options)
-        ?: throw IllegalArgumentException("Failed to decode image: $absolutePath")
-    val normalizedBitmap = normalizeByExif(bitmap, plain)
+    val bitmap = openDecryptedStream().use { input ->
+        BitmapFactory.decodeStream(input, null, options)
+    } ?: throw IllegalArgumentException("Failed to decode image: $absolutePath")
+    val normalizedBitmap = normalizeByExif(bitmap)
 
     return try {
         val outputStream = ByteArrayOutputStream()
@@ -180,13 +185,16 @@ private fun File.compressToJpeg(plain: ByteArray, maxDimension: Int, maxPixels: 
     }
 }
 
-private fun File.normalizeByExif(bitmap: Bitmap, plain: ByteArray): Bitmap {
-    // 图已解密到内存，EXIF 从字节流读，不能再假设磁盘上是明文图片
+private fun File.normalizeByExif(bitmap: Bitmap): Bitmap {
+    // 位图解码已经把上一条流读空了，EXIF 必须从另一条新开的解密流读；多包一层
+    // BufferedInputStream 是为了给 ExifInterface 提供 mark/reset 能力（CipherInputStream 不支持）
     val orientation = runCatching {
-        ExifInterface(plain.inputStream()).getAttributeInt(
-            ExifInterface.TAG_ORIENTATION,
-            ExifInterface.ORIENTATION_NORMAL
-        )
+        BufferedInputStream(openDecryptedStream(), EXIF_BUFFER_SIZE).use { input ->
+            ExifInterface(input).getAttributeInt(
+                ExifInterface.TAG_ORIENTATION,
+                ExifInterface.ORIENTATION_NORMAL
+            )
+        }
     }.getOrDefault(ExifInterface.ORIENTATION_NORMAL)
     val transform = mapExifOrientationToTransform(orientation)
     return applyExifTransform(bitmap, transform)
@@ -259,14 +267,14 @@ internal fun calculateImageInSampleSize(
 }
 
 /**
- * 从**已解密**的字节里嗅探图片 mime。
+ * 从**已解密**的文件头字节里嗅探图片 mime。
  *
  * 不能再看文件本身：加密后的文件头是 `RKI1` 而不是 `FF D8`。嗅探不出时退回扩展名
  * （文件名/扩展名在加密前后完全一致），两者都失败才报错。
  */
-private fun guessMimeType(plain: ByteArray, fileName: String): Result<String> = runCatching {
-    if (plain.size < 12) error("File too short to determine MIME type")
-    val bytes = plain
+private fun guessMimeType(header: ByteArray, fileName: String): Result<String> = runCatching {
+    if (header.size < 12) error("File too short to determine MIME type")
+    val bytes = header
 
     // 判断 HEIF/HEIC/AVIF 格式：ISO-BMFF 容器，"ftyp" box 位于字节 4..8，主品牌码位于 8..12
     // 新手机的 HDR HEIF 照片常用 heix/hevc/mif1/msf1 等品牌码，而非仅 heic，需全部识别
@@ -316,9 +324,51 @@ private fun guessMimeType(plain: ByteArray, fileName: String): Result<String> = 
     )
 }.recoverCatching { throwable ->
     // 扩展名兜底：文件名在加密前后不变，bmp 之类嗅探不到但能正常显示
+    guessMimeTypeByExtension(fileName) ?: throw throwable
+}
+
+private fun guessMimeTypeByExtension(fileName: String): String? {
     val extension = fileName.substringAfterLast('.', "").lowercase()
-    val fromExtension = extension
+    return extension
         .takeIf { it.isNotEmpty() }
         ?.let { MimeTypeMap.getSingleton().getMimeTypeFromExtension(it) }
-    fromExtension?.takeIf { it.startsWith("image/") } ?: throw throwable
+        ?.takeIf { it.startsWith("image/") }
 }
+
+/**
+ * 新开一条解密流，只读文件头用于嗅探 mime —— 明文总长不进内存，加密文件看到的是解密后的字节。
+ * 读不出头（IO 失败）时退回扩展名，与 [guessMimeType] 的兜底策略保持一致。
+ */
+private fun File.guessMimeType(): Result<String> {
+    val header = ByteArray(MIME_SNIFF_BYTES)
+    val size = runCatching {
+        openDecryptedStream().use { it.readAtMost(header) }
+    }.getOrElse { throwable ->
+        return guessMimeTypeByExtension(name)?.let { Result.success(it) }
+            ?: Result.failure(throwable)
+    }
+    return guessMimeType(header.copyOf(size), name)
+}
+
+/**
+ * 打开一条新的解密流。调用方负责 close；解密流不可 seek，需要重复读同一文件时必须重新调用。
+ */
+private fun File.openDecryptedStream(): InputStream =
+    AttachmentCipher.openInputStreamDecrypted(this)
+        ?: throw IllegalStateException("Failed to read image: $absolutePath")
+
+/** 尽力读满 [target]，提前遇到 EOF 就返回实际读到的字节数 */
+private fun InputStream.readAtMost(target: ByteArray): Int {
+    var total = 0
+    while (total < target.size) {
+        val read = read(target, total, target.size - total)
+        if (read <= 0) break
+        total += read
+    }
+    return total
+}
+
+/** mime 嗅探只需要前 12 字节，读 512 字节留足余量（HEIF 主品牌码在 8..12） */
+private const val MIME_SNIFF_BYTES = 512
+
+private const val EXIF_BUFFER_SIZE = 64 * 1024

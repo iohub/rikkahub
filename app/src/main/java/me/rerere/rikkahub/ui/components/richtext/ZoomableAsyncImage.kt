@@ -12,12 +12,12 @@ import androidx.compose.ui.graphics.DefaultAlpha
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import coil3.compose.AsyncImage
-import coil3.request.ImageRequest
 import coil3.request.allowHardware
 import coil3.request.crossfade
 import coil3.request.placeholder
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.ui.components.ui.ImagePreviewDialog
+import me.rerere.rikkahub.ui.components.ui.attachmentImageRequestBuilder
 import me.rerere.rikkahub.ui.modifier.shimmer
 import me.rerere.rikkahub.ui.theme.LocalDarkMode
 import me.rerere.ui.components.LocalExportContext
@@ -35,8 +35,7 @@ fun ZoomableAsyncImage(
     val context = LocalContext.current
     val placeholder = if(LocalDarkMode.current) R.drawable.placeholder_dark else R.drawable.placeholder
     val export = LocalExportContext.current
-    val coilModel = ImageRequest.Builder(context)
-        .data(model)
+    val coilModel = attachmentImageRequestBuilder(context, model)
         .placeholder(placeholder)
         .crossfade(false)
         .allowHardware(!export)

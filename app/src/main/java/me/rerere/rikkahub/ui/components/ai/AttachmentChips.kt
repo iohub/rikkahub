@@ -33,6 +33,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -50,6 +51,7 @@ import me.rerere.hugeicons.stroke.Video01
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.ui.components.ui.ImagePreviewDialog
+import me.rerere.rikkahub.ui.components.ui.attachmentImageRequestBuilder
 import me.rerere.ui.sketch.SketchDialog
 import me.rerere.rikkahub.ui.hooks.ChatInputState
 import org.koin.compose.koinInject
@@ -59,6 +61,7 @@ internal fun MediaFileInputRow(
     state: ChatInputState,
 ) {
     val filesManager: FilesManager = koinInject()
+    val context = LocalContext.current
     val managedFiles by filesManager.observe().collectAsState(initial = emptyList())
     val displayNameByRelativePath = remember(managedFiles) {
         managedFiles.associate { it.relativePath to it.displayName }
@@ -150,7 +153,7 @@ internal fun MediaFileInputRow(
                                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                             ) {
                                 AsyncImage(
-                                    model = part.url,
+                                    model = attachmentImageRequestBuilder(context, part.url).build(),
                                     contentDescription = null,
                                     contentScale = ContentScale.Crop,
                                     modifier = Modifier.fillMaxSize()

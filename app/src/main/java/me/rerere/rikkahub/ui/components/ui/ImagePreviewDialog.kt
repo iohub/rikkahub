@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -58,7 +59,11 @@ fun ImagePreviewDialog(
                 modifier = Modifier.fillMaxSize(),
                 pagerState = state,
                 imageLoader = { index ->
-                    val painter = rememberAsyncImagePainter(images[index])
+                    // 全屏预览同样不能把解密后的明文字节交给 Coil 磁盘缓存
+                    val request = remember(images, index) {
+                        attachmentImageRequestBuilder(context, images[index]).build()
+                    }
+                    val painter = rememberAsyncImagePainter(request)
                     return@ImagePager Pair(painter, painter.intrinsicSize)
                 },
             )

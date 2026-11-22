@@ -27,6 +27,7 @@ import kotlinx.coroutines.runBlocking
 import me.rerere.common.android.appTempFolder
 import me.rerere.rikkahub.data.ai.MemoryConsolidationScheduler
 import me.rerere.rikkahub.data.datastore.SettingsStore
+import me.rerere.rikkahub.data.files.AttachmentPlaintextCache
 import me.rerere.rikkahub.data.files.FileFolders
 import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.remote.ModelsDevUpdater
@@ -101,6 +102,9 @@ class RikkaHubApp : Application() {
 
         // cleanup stale tool output files
         cleanupToolOutputs()
+
+        // 清理分享/导出遗留的临时明文附件
+        sweepAttachmentPlaintext()
 
         // cleanup workspace temp dirs (proot + rootfs /tmp)
         cleanupWorkspaceTempDirs()
@@ -206,6 +210,21 @@ class RikkaHubApp : Application() {
                 if (dir.exists()) {
                     dir.deleteRecursively()
                 }
+            }
+        }
+    }
+
+    /**
+     * 分享/导出附件时会把密文解成 `cacheDir/attachment_plaintext/` 下的临时明文；因为接收方是
+     * 异步读取的，只能按时间兜底清理。之前只有「下一次准备新临时文件」时才会顺手清，用户可能
+     * 一直不分享，于是临时明文长期驻留。启动时补一次清扫（进程退出后另一个进程也可能留下）。
+     */
+    private fun sweepAttachmentPlaintext() {
+        get<AppScope>().launch(Dispatchers.IO) {
+            runCatching {
+                AttachmentPlaintextCache.sweep(this@RikkaHubApp)
+            }.onFailure {
+                Log.e(TAG, "sweepAttachmentPlaintext failed", it)
             }
         }
     }

@@ -38,29 +38,56 @@ object ImageEncodeCache {
             return null
         }
         file.setLastModified(System.currentTimeMillis())
+        migrateLegacyPlaintext(file, bytes)
         return bytes
+    }
+
+    /**
+     * 升级前写下的缓存条目还是明文 JPEG，命中时直接返回就永远不会被加密，会以明文一直留到
+     * 256MB 淘汰。这里就地原子重写成密文。
+     *
+     * 并发安全：重写走「同目录唯一临时文件 + rename」，多个读并发进来各自写自己的临时文件，
+     * 最后写者胜，内容等价（IV 不同）；rename 前后的读者分别打开旧 inode（明文可读）或新文件
+     * （magic 命中走解密），不会读到半个文件。失败只记日志，不影响本次返回 —— 本次的明文已经
+     * 拿到了，下次命中再试一次。
+     */
+    private fun migrateLegacyPlaintext(file: File, bytes: ByteArray) {
+        if (AttachmentCipher.isEncrypted(file)) return
+        runCatching {
+            writeEncryptedAtomically(file, bytes)
+        }.onFailure {
+            Log.w(TAG, "Failed to migrate plaintext cache entry to ciphertext", it)
+        }
     }
 
     internal fun put(key: String, bytes: ByteArray) {
         val target = fileOf(key) ?: return
+        val parent = target.parentFile ?: return
         runCatching {
-            val parent = target.parentFile ?: return
-            parent.mkdirs()
-            val payload = AttachmentCipher.encryptBytes(bytes)
-            // 先写临时文件再重命名，避免并发请求读到写了一半的缓存
-            val temp = File.createTempFile("tmp_", ".part", parent)
-            try {
-                temp.writeBytes(payload)
-                if (!temp.renameTo(target)) {
-                    target.delete()
-                    check(temp.renameTo(target)) { "Failed to move cache file to $target" }
-                }
-            } finally {
-                temp.delete()
-            }
+            writeEncryptedAtomically(target, bytes)
             trim(parent)
         }.onFailure {
             Log.w(TAG, "Failed to write encoded image cache", it)
+        }
+    }
+
+    /**
+     * 加密后原子落盘：内容先写同目录下唯一命名的临时文件，再 rename 覆盖目标，避免并发请求
+     * 读到写了一半的缓存，也避免并发迁移时撞同一个临时文件名。
+     */
+    private fun writeEncryptedAtomically(target: File, bytes: ByteArray) {
+        val parent = target.parentFile ?: return
+        parent.mkdirs()
+        val payload = AttachmentCipher.encryptBytes(bytes)
+        val temp = File.createTempFile("tmp_", ".part", parent)
+        try {
+            temp.writeBytes(payload)
+            if (!temp.renameTo(target)) {
+                target.delete()
+                check(temp.renameTo(target)) { "Failed to move cache file to $target" }
+            }
+        } finally {
+            temp.delete()
         }
     }
 

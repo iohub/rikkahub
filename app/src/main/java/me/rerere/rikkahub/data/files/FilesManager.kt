@@ -53,6 +53,10 @@ class FilesManager(
                 input.copyTo(output)
             }
         }
+        // Web 上传、分享导入与聊天附件共用 upload/ 目录，图片同样要落盘加密：
+        // 读侧（Coil 的 AttachmentFetcher、FilesRoutes 的下载响应）都已支持解密，
+        // 漏掉这里会让同一目录里一半密文一半明文
+        encryptImageInPlace(target, resolvedMime)
         createManagedFileEntity(
             folder = folder,
             file = target,
@@ -69,6 +73,9 @@ class FilesManager(
     ): ManagedFileEntity = withContext(Dispatchers.IO) {
         val target = createTargetFile(folder, displayName, mimeType)
         target.writeBytes(bytes)
+        // 与 saveManagedFromUri 同理：`POST /api/files/upload` 就落在这条路径上，
+        // 加密后 Web 下载侧的 respondAttachmentFile 会自动解密，两端对称
+        encryptImageInPlace(target, mimeType)
         createManagedFileEntity(
             folder = folder,
             file = target,
