@@ -1,7 +1,9 @@
 package me.rerere.rikkahub.data.datastore
 
+import me.rerere.rikkahub.data.model.GlobalSshKey
 import me.rerere.rikkahub.data.model.SshTunnelSetting
 import me.rerere.rikkahub.data.model.displayName
+import me.rerere.rikkahub.data.model.toConnectionConfig
 import me.rerere.rikkahub.data.model.validationError
 import me.rerere.workspace.ssh.SshAuthType
 import org.junit.Assert.assertEquals
@@ -55,10 +57,24 @@ class SshTunnelSettingTest {
         // 目标端口不能留空：0 表示还没填
         assertNotNull(tunnel(id = "a", remotePort = 0).validationError())
         assertNotNull(tunnel(id = "a", encryptedPassword = null).validationError())
-        assertNotNull(
+    }
+
+    @Test
+    fun `private key may be left empty to use the global key`() {
+        // 留空私钥表示回退到设置里的全局 SSH 密钥, 不能当成「还没填完」
+        assertNull(
             tunnel(id = "a", authType = SshAuthType.PRIVATE_KEY, encryptedPrivateKey = null)
                 .validationError()
         )
+    }
+
+    @Test
+    fun `password auth ignores the global key`() {
+        val config = tunnel(id = "a", authType = SshAuthType.PASSWORD, encryptedPassword = null)
+            .toConnectionConfig(GlobalSshKey(encryptedPrivateKey = "v1:global-key"))
+
+        assertEquals(SshAuthType.PASSWORD, config.authType)
+        assertNull(config.privateKey)
     }
 
     @Test

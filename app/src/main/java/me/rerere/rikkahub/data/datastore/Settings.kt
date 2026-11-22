@@ -14,6 +14,7 @@ import me.rerere.rikkahub.data.ai.prompts.DEFAULT_TITLE_PROMPT
 import me.rerere.rikkahub.data.ai.prompts.DEFAULT_TRANSLATION_PROMPT
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.Avatar
+import me.rerere.rikkahub.data.model.GlobalSshKey
 import me.rerere.rikkahub.data.model.Lorebook
 import me.rerere.rikkahub.data.model.PromptInjection
 import me.rerere.rikkahub.data.model.QuickMessage
@@ -96,6 +97,8 @@ data class Settings(
     val sponsorAlertDismissedAt: Int = 0,
     // SSH 本地端口转发（等价 ssh -L），凭据只存密文
     val sshTunnels: List<SshTunnelSetting> = emptyList(),
+    // 全局 SSH 密钥, 隧道与工作区没自带私钥时回退使用; 私钥同样只存密文
+    val sshGlobalKey: GlobalSshKey = GlobalSshKey(),
 ) {
     companion object {
         // 构造一个用于初始化的settings, 但它不能用于保存，防止使用初始值存储

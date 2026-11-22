@@ -12,6 +12,7 @@ import kotlinx.coroutines.withContext
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.db.dao.WorkspaceDAO
 import me.rerere.rikkahub.data.db.entity.WorkspaceEntity
+import me.rerere.rikkahub.data.model.GlobalSshKey
 import me.rerere.rikkahub.data.model.SshJumpHostDraft
 import me.rerere.rikkahub.data.model.SshJumpHostSettings
 import me.rerere.rikkahub.data.model.SshWorkspaceDraft
@@ -104,8 +105,10 @@ class WorkspaceRepository(
     /** 用一条临时连接测试 SSH 配置; [id] 不为空时, 表单里留空的凭据沿用该工作区已保存的值 */
     suspend fun probeSsh(id: String?, draft: SshWorkspaceDraft): SshProbeResult {
         val previous = id?.let { dao.getById(it)?.sshSettings() }
+        // 测试连接与保存后建连用同一套凭据: 表单留空私钥时同样回退全局密钥
+        val globalKey = settingsStore.awaitLoaded().sshGlobalKey
         return runInterruptible(Dispatchers.IO) {
-            sshPool.probe(draft.toSettings(previous).toConnectionConfig())
+            sshPool.probe(draft.toSettings(previous).toConnectionConfig(globalKey))
         }
     }
 
@@ -421,34 +424,63 @@ class WorkspaceRepository(
     private fun backendOf(workspace: WorkspaceEntity): WorkspaceBackend =
         if (workspace.isSsh()) {
             val settings = workspace.sshSettings() ?: error("SSH workspace config is missing: ${workspace.id}")
-            SshWorkspaceBackend(sshPool, workspace.id, settings.toConnectionConfig())
+            // 打开后端不是挂起函数, 只能同步取全局密钥。读盘完成前拿到的是空对象(即未配置),
+            // 此时回退不生效, 与没有全局密钥时的行为一致
+            SshWorkspaceBackend(sshPool, workspace.id, settings.toConnectionConfig(settingsStore.currentGlobalSshKey))
         } else {
             manager.backend(workspace.root, workspace.shellCompatibilityMode, workspace.extraBindMounts())
         }
 
-    private fun SshWorkspaceSettings.toConnectionConfig() = SshConnectionConfig(
-        host = host,
-        port = port,
-        username = username,
-        authType = authType,
-        password = encryptedPassword?.let(::decryptSecret),
-        privateKey = encryptedPrivateKey?.let(::decryptSecret),
-        passphrase = encryptedPassphrase?.let(::decryptSecret),
-        remoteDir = remoteDir,
-        hostKey = hostKey,
-        jumpHost = jumpHost?.let { jump ->
-            SshJumpHostConfig(
-                host = jump.host,
-                port = jump.port,
-                username = jump.username,
-                authType = jump.authType,
-                password = jump.encryptedPassword?.let(::decryptSecret),
-                privateKey = jump.encryptedPrivateKey?.let(::decryptSecret),
-                passphrase = jump.encryptedPassphrase?.let(::decryptSecret),
-                hostKey = jump.hostKey,
-            )
-        },
-    )
+    private fun SshWorkspaceSettings.toConnectionConfig(globalKey: GlobalSshKey?): SshConnectionConfig {
+        val (privateKeySecret, passphraseSecret) =
+            credentialSecrets(authType, encryptedPrivateKey, encryptedPassphrase, globalKey)
+        return SshConnectionConfig(
+            host = host,
+            port = port,
+            username = username,
+            authType = authType,
+            password = encryptedPassword?.let(::decryptSecret),
+            privateKey = privateKeySecret?.let(::decryptSecret),
+            passphrase = passphraseSecret?.let(::decryptSecret),
+            remoteDir = remoteDir,
+            hostKey = hostKey,
+            jumpHost = jumpHost?.let { jump ->
+                val (jumpPrivateKey, jumpPassphrase) =
+                    credentialSecrets(jump.authType, jump.encryptedPrivateKey, jump.encryptedPassphrase, globalKey)
+                SshJumpHostConfig(
+                    host = jump.host,
+                    port = jump.port,
+                    username = jump.username,
+                    authType = jump.authType,
+                    password = jump.encryptedPassword?.let(::decryptSecret),
+                    privateKey = jumpPrivateKey?.let(::decryptSecret),
+                    passphrase = jumpPassphrase?.let(::decryptSecret),
+                    hostKey = jump.hostKey,
+                )
+            },
+        )
+    }
+
+    /**
+     * 取这次连接要用的私钥与口令密文。
+     *
+     * 只有私钥认证、本实体没填私钥、且全局密钥确实配置过时才回退到全局密钥；
+     * 回退时口令也只跟全局密钥走，本实体的口令是给它自己的私钥用的，混用会导致认证失败。
+     */
+    private fun credentialSecrets(
+        authType: SshAuthType,
+        encryptedPrivateKey: String?,
+        encryptedPassphrase: String?,
+        globalKey: GlobalSshKey?,
+    ): Pair<String?, String?> {
+        val configuredKey = globalKey?.takeIf { it.isConfigured }
+        val missingPrivateKey = authType == SshAuthType.PRIVATE_KEY && encryptedPrivateKey.isNullOrBlank()
+        return if (missingPrivateKey && configuredKey != null) {
+            configuredKey.encryptedPrivateKey to configuredKey.encryptedPassphrase
+        } else {
+            encryptedPrivateKey to encryptedPassphrase
+        }
+    }
 
     /** 表单转成持久化配置并加密凭据。编辑时留空的凭据沿用 [previous] 的密文, 规则见 [encryptCredentials] */
     private fun SshWorkspaceDraft.toSettings(previous: SshWorkspaceSettings?): SshWorkspaceSettings {

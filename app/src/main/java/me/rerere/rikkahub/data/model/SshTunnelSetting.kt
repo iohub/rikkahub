@@ -53,20 +53,30 @@ data class SshTunnelSetting(
 /**
  * 转成 SSH 连接配置，顺带解密凭据。
  *
+ * [globalKey] 是设置里的全局密钥：私钥认证且本实体没自带私钥时用它回退，其余情况（含密码认证）不读它。
  * 端口转发用不到远程目录，但 [SshConnectionConfig.remoteDir] 必填且要求绝对路径，这里固定传 `/`。
  * 解密失败只可能是密钥不可用（换设备、重装后恢复备份），抛 [IOException] 让调用方提示重新填写。
  */
-fun SshTunnelSetting.toConnectionConfig(): SshConnectionConfig = SshConnectionConfig(
-    host = host.trim(),
-    port = port,
-    username = username.trim(),
-    authType = authType,
-    password = encryptedPassword?.let(::decryptSecret),
-    privateKey = encryptedPrivateKey?.let(::decryptSecret),
-    passphrase = encryptedPassphrase?.let(::decryptSecret),
-    remoteDir = "/",
-    hostKey = hostKey,
-)
+fun SshTunnelSetting.toConnectionConfig(globalKey: GlobalSshKey? = null): SshConnectionConfig {
+    // 只有私钥认证、本实体没填私钥、且全局密钥确实配置过时才回退；否则一律用本实体的凭据
+    val fallbackKey = globalKey?.takeIf {
+        authType == SshAuthType.PRIVATE_KEY && encryptedPrivateKey.isNullOrBlank() && it.isConfigured
+    }
+    val privateKeySecret = if (fallbackKey != null) fallbackKey.encryptedPrivateKey else encryptedPrivateKey
+    // 回退时口令也只跟全局密钥走：本实体的口令是给本实体私钥用的，混用会导致认证失败
+    val passphraseSecret = if (fallbackKey != null) fallbackKey.encryptedPassphrase else encryptedPassphrase
+    return SshConnectionConfig(
+        host = host.trim(),
+        port = port,
+        username = username.trim(),
+        authType = authType,
+        password = encryptedPassword?.let(::decryptSecret),
+        privateKey = privateKeySecret?.let(::decryptSecret),
+        passphrase = passphraseSecret?.let(::decryptSecret),
+        remoteDir = "/",
+        hostKey = hostKey,
+    )
+}
 
 /** 列表和通知里显示的名字，没填名字时用连接地址 */
 fun SshTunnelSetting.displayName(): String = name.ifBlank { "$username@$host" }
@@ -81,7 +91,7 @@ fun SshTunnelSetting.validationError(): String? = when {
     port !in 1..65535 -> "SSH 端口必须在 1-65535 之间"
     username.isBlank() -> "用户名不能为空"
     authType == SshAuthType.PASSWORD && encryptedPassword.isNullOrEmpty() -> "请填写密码"
-    authType == SshAuthType.PRIVATE_KEY && encryptedPrivateKey.isNullOrEmpty() -> "请填写私钥"
+    // 私钥可以留空：留空表示用设置里的全局 SSH 密钥，是否真的能连由建连结果决定
     localPort !in 0..65535 -> "本地端口必须在 0-65535 之间"
     remoteHost.isBlank() -> "目标主机不能为空"
     remotePort !in 1..65535 -> "目标端口必须在 1-65535 之间"

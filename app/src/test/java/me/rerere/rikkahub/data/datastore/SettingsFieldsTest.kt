@@ -10,6 +10,7 @@ import me.rerere.asr.ASRProviderSetting
 import me.rerere.mediagen.provider.MediaGenerationProviderSetting
 import me.rerere.rikkahub.data.ai.mcp.McpServerConfig
 import me.rerere.rikkahub.data.model.Assistant
+import me.rerere.rikkahub.data.model.GlobalSshKey
 import me.rerere.rikkahub.data.model.Lorebook
 import me.rerere.rikkahub.data.model.PromptInjection
 import me.rerere.rikkahub.data.model.QuickMessage
@@ -79,6 +80,7 @@ class SettingsFieldsTest {
         assertEquals(false, settings.enableBuiltInTts)
         assertEquals(null, settings.selectedASRProviderId)
         assertEquals(null, settings.memoryModelId)
+        assertEquals(false, settings.sshGlobalKey.isConfigured)
         assertEquals(true, settings.dynamicColor)
         assertEquals(8080, settings.webServerPort)
     }
@@ -191,6 +193,12 @@ private val SAMPLE = Settings(
             enabled = true,
         )
     ),
+    // 全局 SSH 密钥: 公钥明文, 私钥与口令只存密文
+    sshGlobalKey = GlobalSshKey(
+        publicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI",
+        encryptedPrivateKey = "v1:global-private-key",
+        encryptedPassphrase = "v1:global-passphrase",
+    ),
 )
 
 private val STORED_KEYS = setOf(
@@ -248,4 +256,5 @@ private val STORED_KEYS = setOf(
     "backup_reminder_config",
     "sponsor_alert_dismissed_at",
     "ssh_tunnels",
+    "ssh_global_key",
 )

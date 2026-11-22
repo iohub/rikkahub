@@ -312,8 +312,10 @@ class SshTunnelManager(
             Log.i(TAG, "Skip starting tunnel $id: manager is shut down")
             return
         }
-        // 服务刚启动时设置可能还在读盘, 这里等一次加载完成
-        val tunnel = settingsStore.awaitLoaded().sshTunnels.find { it.id == id }
+        // 服务刚启动时设置可能还在读盘, 这里等一次加载完成;
+        // 整份设置留着, 下面组装连接配置时要用全局 SSH 密钥做回退
+        val settings = settingsStore.awaitLoaded()
+        val tunnel = settings.sshTunnels.find { it.id == id }
         if (tunnel == null) {
             Log.w(TAG, "Tunnel $id not found in settings")
             setState(id) { TunnelState(id) }
@@ -348,8 +350,8 @@ class SshTunnelManager(
                 }
                 return
             }
-            // 解密凭据, 解密失败说明密钥已经不可用
-            tunnel.toConnectionConfig()
+            // 解密凭据, 解密失败说明密钥已经不可用; 本隧道没自带私钥时回退设置里的全局密钥
+            tunnel.toConnectionConfig(settings.sshGlobalKey)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

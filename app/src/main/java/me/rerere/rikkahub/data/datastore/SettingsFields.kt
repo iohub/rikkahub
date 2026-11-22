@@ -172,6 +172,7 @@ internal val SETTINGS_FIELDS: List<SettingsField<*, *>> = with(SettingsStore) {
 
         // SSH 端口转发
         json(SSH_TUNNELS, Settings::sshTunnels) { copy(sshTunnels = it) },
+        json(SSH_GLOBAL_KEY, Settings::sshGlobalKey) { copy(sshGlobalKey = it) },
 
         // 提示词注入
         json(MODE_INJECTIONS, Settings::modeInjections) { copy(modeInjections = it) },

@@ -117,6 +117,9 @@ private fun Settings.withValuesInRange(): Settings = copy(
             remotePort = tunnel.remotePort.coerceIn(0, 65535),
         )
     },
+    // 全局密钥是单个对象，没有 id 之类的交叉引用要清理；只把公钥收敛成单行文本的规范形式，
+    // 粘贴时带上的首尾换行会让展示和复制到 authorized_keys 的结果不对
+    sshGlobalKey = sshGlobalKey.copy(publicKey = sshGlobalKey.publicKey.trim()),
     ttsProviders = ttsProviders.map { provider -> provider.withValuesInRange() },
     // 编排阶段的取值收敛挂在助手下面，与其它助手级配置一样在读盘后统一过一遍
     assistants = assistants.map { assistant ->

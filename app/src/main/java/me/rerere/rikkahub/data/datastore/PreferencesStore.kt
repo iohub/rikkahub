@@ -40,6 +40,7 @@ import me.rerere.rikkahub.data.datastore.migration.PreferenceStoreV3Migration
 import me.rerere.rikkahub.data.datastore.migration.PreferenceStoreV4Migration
 import me.rerere.rikkahub.data.datastore.migration.PreferenceStoreV5Migration
 import me.rerere.rikkahub.data.model.Assistant
+import me.rerere.rikkahub.data.model.GlobalSshKey
 import java.io.File
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.uuid.Uuid
@@ -177,6 +178,9 @@ class SettingsStore internal constructor(
         // SSH 端口转发
         val SSH_TUNNELS = stringPreferencesKey("ssh_tunnels")
 
+        // 全局 SSH 密钥, 隧道与工作区没自带私钥时回退使用
+        val SSH_GLOBAL_KEY = stringPreferencesKey("ssh_global_key")
+
         // 提示词注入
         val MODE_INJECTIONS = stringPreferencesKey("mode_injections")
         val LOREBOOKS = stringPreferencesKey("lorebooks")
@@ -221,6 +225,15 @@ class SettingsStore internal constructor(
 
     /** 等启动时的读盘完成后返回当前设置，不会返回 [Settings.dummy]。已经加载完时直接返回。 */
     suspend fun awaitLoaded(): Settings = state.first { !it.init }
+
+    /**
+     * 当前配置的全局 SSH 密钥，给 [awaitLoaded] 用不了的非挂起调用方读取。
+     *
+     * 读盘完成前拿到的是 [Settings.dummy] 里的空对象，代表「未配置」，回退逻辑不生效，
+     * 与没有这个设置时的行为一致，因此这类比 [awaitLoaded] 早的读取是可以接受的。
+     */
+    val currentGlobalSshKey: GlobalSshKey
+        get() = state.value.sshGlobalKey
 
     private val stateLock = Any()
 
