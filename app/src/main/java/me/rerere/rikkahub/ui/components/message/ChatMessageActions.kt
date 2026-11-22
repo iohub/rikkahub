@@ -105,13 +105,8 @@ fun ColumnScope.ChatMessageActionButtons(
         ChatMessageActionButton(
             icon = HugeIcons.Refresh03,
             contentDescription = stringResource(R.string.regenerate),
-            onClick = {
-                if (message.role == MessageRole.USER) {
-                    showRegenerateConfirm = true
-                } else {
-                    onRegenerate()
-                }
-            },
+            // 任何角色都先弹二次确认，避免误点把这条消息及其下方的消息清掉
+            onClick = { showRegenerateConfirm = true },
         )
 
         if (message.role == MessageRole.ASSISTANT) {
