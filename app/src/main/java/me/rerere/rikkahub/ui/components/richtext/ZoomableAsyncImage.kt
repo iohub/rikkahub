@@ -30,6 +30,10 @@ fun ZoomableAsyncImage(
     alignment: Alignment = Alignment.Center,
     contentScale: ContentScale = ContentScale.Fit,
     alpha: Float = DefaultAlpha,
+    // 全屏预览里要翻的完整图片序列; 为空时退化成只有 model 一张(原有行为)
+    previewImages: List<String> = emptyList(),
+    // model 在上面这个序列里的下标, 决定点开后停在哪一张
+    previewIndex: Int = 0,
 ) {
     var showImageViewer by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -63,8 +67,14 @@ fun ZoomableAsyncImage(
         },
     )
     if (showImageViewer) {
-        ImagePreviewDialog(images = listOf(model ?: "")) {
-            showImageViewer = false
-        }
+        // 同一条消息的多张图片共用一个预览序列, 所以点任意一张都能左右翻到其它张
+        val images = previewImages.ifEmpty { listOf(model ?: "") }
+        ImagePreviewDialog(
+            images = images,
+            initialPage = previewIndex.coerceIn(0, images.lastIndex.coerceAtLeast(0)),
+            onDismissRequest = {
+                showImageViewer = false
+            }
+        )
     }
 }

@@ -308,6 +308,12 @@ fun ChatMessage(
 // 思考链折叠时默认保留的尾部步骤数
 private const val COLLAPSED_VISIBLE_STEPS = 2
 
+// 流式生成中的图片占位: 还没有 url, 或者只带了一个空的 base64 前缀
+private val PENDING_IMAGE_DATA_REGEX = Regex("^data:image/[^;]*;base64,\\s*$")
+
+private fun UIMessagePart.Image.isImagePending(): Boolean =
+    url.isBlank() || url.matches(PENDING_IMAGE_DATA_REGEX)
+
 @OptIn(FlowPreview::class)
 @Composable
 private fun MessagePartsBlock(
@@ -372,6 +378,15 @@ private fun MessagePartsBlock(
 
     // Render parts in original order (group thinking/tool as chain-of-thought)
     val groupedParts = remember(parts) { parts.groupMessageParts() }
+
+    // 本条消息里所有可预览的图片(原始 part 下标 -> url), 顺序与卡片上显示顺序一致。
+    // 用原始下标而不是 url 去定位当前页: 重复 url 不会错位, 流式生成中的空占位也不会挤进序列
+    val previewImageEntries = remember(parts) {
+        parts.mapIndexedNotNull { index, part ->
+            if (part is UIMessagePart.Image && !part.isImagePending()) index to part.url else null
+        }
+    }
+    val previewImages = remember(previewImageEntries) { previewImageEntries.map { it.second } }
     groupedParts.fastForEach { block ->
         when (block) {
             is MessagePartBlock.ThinkingBlock -> {
@@ -537,9 +552,7 @@ private fun MessagePartsBlock(
                     }
 
                     is UIMessagePart.Image -> {
-                        val isImageLoading =
-                            part.url.isBlank() || part.url.matches(Regex("^data:image/[^;]*;base64,\\s*$"))
-                        if (isImageLoading) {
+                        if (part.isImagePending()) {
                             Box(
                                 modifier = Modifier
                                     .size(72.dp)
@@ -548,12 +561,16 @@ private fun MessagePartsBlock(
                                     .shimmer(isLoading = true)
                             )
                         } else {
+                            // 点击后从这张开始, 左右可翻到本条消息的其它图片
+                            val previewIndex = previewImageEntries.indexOfFirst { it.first == block.index }
                             ZoomableAsyncImage(
                                 model = part.url,
                                 contentDescription = null,
                                 modifier = Modifier
                                     .clip(MaterialTheme.shapes.large)
-                                    .height(72.dp)
+                                    .height(72.dp),
+                                previewImages = previewImages,
+                                previewIndex = previewIndex.coerceAtLeast(0),
                             )
                         }
                     }
