@@ -32,6 +32,9 @@ import androidx.compose.ui.util.lerp
 import androidx.core.content.FileProvider
 import androidx.core.net.toFile
 import androidx.core.net.toUri
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import me.rerere.rikkahub.data.files.AttachmentPlaintextCache
 
 /**
  * 按压进度：按下趋向 1，松开回到 0，用来让容器的圆角在按下时收紧。
@@ -47,10 +50,20 @@ internal fun animatePressProgress(interactionSource: InteractionSource): State<F
     )
 }
 
-internal fun Context.openLocalFile(url: String) {
+/**
+ * 交给系统应用打开附件。
+ *
+ * 落盘加密的图片/附件必须先把明文解到 cacheDir 再交给 FileProvider —— 直接把密文路径发出去，
+ * 外部应用只会看到一堆解不开的字节，也等于把密文文件暴露给第三方。
+ */
+internal suspend fun Context.openLocalFile(url: String) {
+    val source = runCatching { url.toUri().toFile() }.getOrNull() ?: return
+    val target = withContext(Dispatchers.IO) {
+        AttachmentPlaintextCache.prepare(this@openLocalFile, source)
+    } ?: return
     val intent = Intent(Intent.ACTION_VIEW)
     intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-    intent.data = FileProvider.getUriForFile(this, "$packageName.fileprovider", url.toUri().toFile())
+    intent.data = FileProvider.getUriForFile(this, "$packageName.fileprovider", target)
     startActivity(Intent.createChooser(intent, null))
 }
 

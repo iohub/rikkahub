@@ -35,6 +35,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -63,6 +64,7 @@ import androidx.compose.ui.util.fastForEach
 import androidx.compose.ui.util.fastForEachIndexed
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -321,6 +323,8 @@ private fun MessagePartsBlock(
     onUserMessageClick: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
+    // 附件外发要先在 IO 线程解密到临时明文文件，再拉起系统应用
+    val openFileScope = rememberCoroutineScope()
     // 消息输出HapticFeedback
     val hapticFeedback = LocalHapticFeedback.current
     val settings = LocalSettings.current
@@ -521,14 +525,14 @@ private fun MessagePartsBlock(
                     is UIMessagePart.Video -> {
                         ChatMessageMediaTile(
                             icon = HugeIcons.Video01,
-                            onClick = { context.openLocalFile(part.url) },
+                            onClick = { openFileScope.launch { context.openLocalFile(part.url) } },
                         )
                     }
 
                     is UIMessagePart.Audio -> {
                         ChatMessageMediaTile(
                             icon = HugeIcons.MusicNote03,
-                            onClick = { context.openLocalFile(part.url) },
+                            onClick = { openFileScope.launch { context.openLocalFile(part.url) } },
                         )
                     }
 
@@ -557,7 +561,7 @@ private fun MessagePartsBlock(
                     is UIMessagePart.Document -> {
                         ChatMessageFileChip(
                             text = part.fileName,
-                            onClick = { context.openLocalFile(part.url) },
+                            onClick = { openFileScope.launch { context.openLocalFile(part.url) } },
                             icon = {
                                 when (part.mime) {
                                     "application/vnd.openxmlformats-officedocument.wordprocessingml.document" -> {

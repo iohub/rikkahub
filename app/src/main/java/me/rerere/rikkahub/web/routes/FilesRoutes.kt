@@ -5,9 +5,11 @@ import androidx.core.net.toUri
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.PartData
+import io.ktor.server.application.ApplicationCall
 import io.ktor.server.request.receiveMultipart
 import io.ktor.server.response.header
 import io.ktor.server.response.respond
+import io.ktor.server.response.respondBytes
 import io.ktor.server.response.respondFile
 import io.ktor.server.response.respondOutputStream
 import io.ktor.server.routing.Route
@@ -16,6 +18,9 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import io.ktor.utils.io.readAvailable
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import me.rerere.ai.util.AttachmentCipher
 import me.rerere.rikkahub.data.db.entity.ManagedFileEntity
 import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.files.saveUploadFromBytes
@@ -110,8 +115,7 @@ fun Route.filesRoutes(
                 throw NotFoundException("File not found on disk")
             }
 
-            call.response.header("Content-Type", entity.mimeType)
-            call.respondFile(file)
+            call.respondAttachmentFile(file, entity.mimeType)
         }
 
         // GET /api/files/path/{...} - Get file by relative path
@@ -169,10 +173,29 @@ fun Route.filesRoutes(
                 }
             }
 
-            call.response.header("Content-Type", contentType)
-            call.respondFile(file)
+            call.respondAttachmentFile(file, contentType)
         }
     }
+}
+
+/**
+ * 附件图片在磁盘上是 [AttachmentCipher] 加密的，直接 `respondFile` 会把密文丢给客户端
+ * （web-ui 里的消息图片就是从这里加载的）。密文先解密成字节响应，明文文件仍走零拷贝的
+ * `respondFile`。
+ */
+private suspend fun ApplicationCall.respondAttachmentFile(file: File, contentType: String) {
+    if (!AttachmentCipher.isEncrypted(file)) {
+        response.header("Content-Type", contentType)
+        respondFile(file)
+        return
+    }
+    val bytes = withContext(Dispatchers.IO) { AttachmentCipher.readBytesDecrypted(file) }
+    if (bytes == null) {
+        respond(HttpStatusCode.InternalServerError, mapOf("error" to "Failed to decode file"))
+        return
+    }
+    response.header("Content-Type", contentType)
+    respondBytes(bytes, ContentType.parse(contentType))
 }
 
 // GET /api/assets/{...} - Get file from app assets

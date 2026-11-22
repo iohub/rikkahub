@@ -1,5 +1,6 @@
 package me.rerere.rikkahub.data.files
 
+import android.app.Activity
 import android.content.Context
 import android.graphics.BitmapFactory
 import android.net.Uri
@@ -13,6 +14,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
+import me.rerere.ai.util.AttachmentCipher
 import me.rerere.common.android.Logging
 import me.rerere.rikkahub.AppScope
 import me.rerere.rikkahub.data.db.entity.ManagedFileEntity
@@ -127,6 +129,8 @@ class FilesManager(
                     }
                 }
                 val guessedMime = sourceMime ?: guessMimeType(file, sourceName)
+                // 图片附件落盘后立刻原地加密：文件名/扩展名不变，Room 里的 file:// url 继续有效
+                encryptImageInPlace(file, guessedMime)
                 trackManagedFile(
                     folder = FileFolders.UPLOAD,
                     file = file,
@@ -166,6 +170,7 @@ class FilesManager(
             file.outputStream().use { outputStream ->
                 outputStream.write(byteArray)
             }
+            encryptImageInPlace(file, mimeType)
             trackManagedFile(
                 folder = FileFolders.UPLOAD,
                 file = file,
@@ -259,6 +264,22 @@ class FilesManager(
         )
     }
 
+    /**
+     * 把图片文件写进相册。落盘加密的图片必须先解出明文 —— 相册里出现的必须是能直接打开的图，
+     * 不能是密文。解出来的临时明文用完即删；存量明文文件原样导出，行为与改动前一致。
+     */
+    private fun exportImageFileDecrypted(context: Context, activity: Activity, file: File) {
+        val exportFile = AttachmentPlaintextCache.prepare(context, file)
+            ?: error("Failed to read image: ${file.name}")
+        try {
+            context.exportImageFile(activity, exportFile)
+        } finally {
+            if (exportFile != file) {
+                exportFile.delete()
+            }
+        }
+    }
+
     fun getImagesDir(): File {
         val dir = context.filesDir.resolve("images")
         if (!dir.exists()) {
@@ -279,6 +300,7 @@ class FilesManager(
         val file = File(filePath)
         file.parentFile?.mkdirs()
         file.writeBytes(byteArray)
+        encryptImageInPlace(file, null)
         return file
     }
 
@@ -302,11 +324,11 @@ class FilesManager(
 
             image.startsWith("file:") -> {
                 val file = image.toUri().toFile()
-                activityContext.exportImageFile(activity, file)
+                exportImageFileDecrypted(activityContext, activity, file)
             }
 
             image.startsWith("/") -> {
-                activityContext.exportImageFile(activity, File(image))
+                exportImageFileDecrypted(activityContext, activity, File(image))
             }
 
             image.startsWith("http") -> {
@@ -511,6 +533,21 @@ class FilesManager(
 
     private fun guessMimeType(file: File, fileName: String): String =
         FileUtils.guessMimeType(file, fileName)
+
+    /**
+     * 图片附件落盘后原地加密（[AttachmentCipher]），非图片（文档/音频/视频）保持明文。
+     *
+     * 加密走「同目录临时文件 + rename 覆盖」，文件名与扩展名保持不变 —— Room 里存量
+     * `file://` url 直接就是物理路径，改名会让历史消息的图片全部失效。
+     * 加密失败只记日志、文件保持明文：读侧对明文直通，用户数据不会因此丢。
+     */
+    private fun encryptImageInPlace(file: File, mimeType: String?) {
+        if (!file.isFile) return
+        if (!AttachmentCipher.isImageFile(file, mimeType)) return
+        if (!AttachmentCipher.encryptFileInPlace(file)) {
+            Log.w(TAG, "encryptImageInPlace: failed to encrypt ${file.name}")
+        }
+    }
 }
 
 data class SyncResult(

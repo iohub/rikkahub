@@ -65,6 +65,7 @@ import me.rerere.rikkahub.data.db.DatabaseMigrationTracker
 import me.rerere.rikkahub.data.db.MigrationState
 import me.rerere.rikkahub.data.event.AppEvent
 import me.rerere.rikkahub.data.event.AppEventBus
+import me.rerere.rikkahub.data.files.AttachmentFetcher
 import me.rerere.rikkahub.data.repository.MediaCreationRepository
 import me.rerere.rikkahub.service.MediaCreationForegroundService
 import me.rerere.rikkahub.ui.activity.SafeModeActivity
@@ -205,6 +206,9 @@ class RouteActivity : ComponentActivity() {
                     ImageLoader.Builder(context)
                         .crossfade(true)
                         .components {
+                            // 必须排在内置 file:// Fetcher 之前：加密附件要先解密才能解码，
+                            // 非加密文件它会返回 null 交回默认链路
+                            add(AttachmentFetcher.Factory())
                             add(
                                 OkHttpNetworkFetcherFactory(
                                     callFactory = { okHttpClient },
