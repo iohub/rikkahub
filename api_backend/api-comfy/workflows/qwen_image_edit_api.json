@@ -1,0 +1,95 @@
+{
+  "3": {
+    "class_type": "TextEncodeQwenImageEditPlus",
+    "inputs": {
+      "clip": ["47", 0],
+      "vae": ["48", 0],
+      "image1": ["7", 0],
+      "image2": ["8", 0],
+      "prompt": "__PROMPT__"
+    },
+    "_meta": {"title": "Input Prompt"}
+  },
+  "4": {
+    "class_type": "TextEncodeQwenImageEditPlus",
+    "inputs": {
+      "clip": ["47", 0],
+      "vae": ["48", 0],
+      "prompt": ""
+    },
+    "_meta": {"title": "Negative (leave blank)"}
+  },
+  "2": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": ["46", 0],
+      "positive": ["3", 0],
+      "negative": ["4", 0],
+      "latent_image": ["40", 0],
+      "seed": 551302214466836,
+      "steps": 4,
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1
+    },
+    "_meta": {"title": "KSampler"}
+  },
+  "5": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": ["2", 0],
+      "vae": ["48", 0]
+    }
+  },
+  "26": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": ["5", 0],
+      "filename_prefix": "ComfyUI"
+    }
+  },
+  "7": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "5d90be3a62766765084a37b6a7568bee.jpg"
+    },
+    "_meta": {"title": "参考图1"}
+  },
+  "8": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "11137924582_827972593.jpg"
+    },
+    "_meta": {"title": "参考图2"}
+  },
+  "46": {
+    "class_type": "UnetLoaderGGUF",
+    "inputs": {
+      "unet_name": "Qwen-Rapid-NSFW-v23_Q6_K.gguf"
+    }
+  },
+  "47": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen_2.5_vl_7b_fp8_scaled.safetensors",
+      "type": "stable_diffusion",
+      "device": "default"
+    }
+  },
+  "48": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "qwen_image_vae.safetensors"
+    }
+  },
+  "40": {
+    "class_type": "EmptyLatentImage",
+    "inputs": {
+      "width": 1080,
+      "height": 1920,
+      "batch_size": 1
+    },
+    "_meta": {"title": "空 latent（尺寸入口）"}
+  }
+}

@@ -1,0 +1,19 @@
+# 生成结果不入库，只保留占位文件
+outputs/*
+!outputs/.gitkeep
+
+# 异步任务表（运行时状态，含任务历史与 prompts）
+state/
+
+# Python 缓存
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+
+# 临时文件
+*.log
+.DS_Store
+
+# 照片库（长期保存的参考照片，含私密人像，绝不入库）
+photos/
