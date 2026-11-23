@@ -34,7 +34,7 @@ class RemoteImageGenerationRequestTest {
     private fun RemoteGenerateRequest.toJsonObject(): JsonObject =
         Json.parseToJsonElement(json.encodeToString(RemoteGenerateRequest.serializer(), this)).jsonObject
 
-    private val camelCaseKeys = listOf("batchSize", "filenamePrefix", "noReference")
+    private val camelCaseKeys = listOf("batchSize", "filenamePrefix", "noReference", "fullBodyPhotoId")
 
     @Test
     fun `full request is encoded with the snake case keys the service expects`() {
@@ -84,7 +84,10 @@ class RemoteImageGenerationRequestTest {
         val body = RemoteGenerateRequest(prompt = "only a prompt").toJsonObject()
 
         assertEquals(setOf("prompt"), body.keys)
-        listOf("negative", "size", "steps", "seed", "no_reference", "images", "timeout", "batch_size")
+        listOf(
+            "negative", "size", "steps", "seed", "no_reference", "images", "timeout",
+            "batch_size", "full_body_photo_id",
+        )
             .forEach { key ->
                 assertFalse("值为 null 的字段 $key 不应该出现在请求体里", body.containsKey(key))
             }
@@ -113,6 +116,30 @@ class RemoteImageGenerationRequestTest {
 
         assertEquals(1, images.size)
         assertEquals("data:image/png;base64,AAA", images[0].jsonPrimitive.content)
+    }
+
+    @Test
+    fun `full body photo id is sent with its snake case key`() {
+        val body = RemoteGenerateRequest(
+            prompt = "a full body portrait",
+            images = listOf("data:image/png;base64,AAA"),
+            fullBodyPhotoId = "9f2c4a1b7d3e5f60",
+        ).toJsonObject()
+
+        assertEquals(
+            "服务端按 full_body_photo_id 找照片库条目，字段名写错会 400",
+            "9f2c4a1b7d3e5f60",
+            body.getValue("full_body_photo_id").jsonPrimitive.content,
+        )
+        assertFalse("不能出现 camelCase 的 key", body.containsKey("fullBodyPhotoId"))
+    }
+
+    @Test
+    fun `missing full body photo id is omitted from the request body`() {
+        // 没有全身照片时必须回到改造前的 wire 契约：多一个 null 字段就可能被旧服务端拒掉
+        val body = RemoteGenerateRequest(prompt = "a cat").toJsonObject()
+
+        assertFalse(body.containsKey("full_body_photo_id"))
     }
 
     @Test

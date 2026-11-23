@@ -148,23 +148,47 @@ class ImageGenerationToolArgsTest {
     }
 
     @Test
-    fun `reference prompt keeps only the newest three local images`() {
+    fun `reference prompt keeps only the newest two local images`() {
         val prompt = buildReferenceImagesPrompt(
-            (1..4).map { index ->
+            (1..3).map { index ->
                 messageWithParts(UIMessagePart.Image(url = "file:///upload/img$index.png"))
             }
         )
 
         assertFalse("最旧的一张应该被截掉", prompt.contains("img1.png"))
-        listOf("img2.png", "img3.png", "img4.png").forEach { name ->
+        listOf("img2.png", "img3.png").forEach { name ->
             assertTrue("$name 应该在提示词里", prompt.contains("file:///upload/$name"))
         }
         // 顺序保持会话里的时间顺序：越靠后越新
         assertTrue(
             "参考图顺序应该保持原始顺序",
-            prompt.indexOf("img2.png") < prompt.indexOf("img3.png") &&
-                prompt.indexOf("img3.png") < prompt.indexOf("img4.png"),
+            prompt.indexOf("img2.png") < prompt.indexOf("img3.png"),
         )
+    }
+
+    @Test
+    fun `reference prompt with a fixed full body photo lists only one conversation image`() {
+        val prompt = buildReferenceImagesPrompt(
+            messages = (1..3).map { index ->
+                messageWithParts(UIMessagePart.Image(url = "file:///upload/img$index.png"))
+            },
+            hasFullBodyPhoto = true,
+        )
+
+        // 全身照片固定占 image1，会话里的图只剩 1 个槽位：只留最新的 img3
+        assertTrue(prompt.contains("<fixed_full_body_photo>"))
+        assertTrue("要告诉模型照片固定是参考图 1", prompt.contains("ALWAYS sent as reference image 1"))
+        assertTrue(prompt.contains("file:///upload/img3.png"))
+        assertFalse("槽位只剩一个，img2 不该出现", prompt.contains("file:///upload/img2.png"))
+        assertFalse(prompt.contains("file:///upload/img1.png"))
+    }
+
+    @Test
+    fun `reference prompt still explains the fixed photo when there is no conversation image`() {
+        val prompt = buildReferenceImagesPrompt(emptyList(), hasFullBodyPhoto = true)
+
+        assertTrue("没有会话图片时也要说明固定全身照片的存在", prompt.contains("<fixed_full_body_photo>"))
+        assertFalse("没有会话图片就不该有可用参考图清单", prompt.contains("<available_reference_images>"))
     }
 
     @Test

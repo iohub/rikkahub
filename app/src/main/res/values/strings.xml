@@ -1383,6 +1383,14 @@
   <string name="setting_provider_page_include_history_reasoning">Include History Reasoning</string>
   <string name="assistant_page_gradient_background">Gradient Background</string>
   <string name="assistant_page_gradient_background_desc">Use a dynamic gradient background on the chat page</string>
+  <string name="assistant_page_full_body_photo">Full-body photo</string>
+  <string name="assistant_page_full_body_photo_desc">Upload once; it is used as reference image 1 for every generated image.</string>
+  <string name="reference_photo_pick">Upload photo</string>
+  <string name="reference_photo_change">Change</string>
+  <string name="reference_photo_remove">Remove</string>
+  <string name="reference_photo_uploading">Uploading…</string>
+  <string name="reference_photo_upload_failed">Upload failed: %1$s</string>
+  <string name="reference_photo_need_service">Configure the image generation service first</string>
   <string name="assistant_page_workspace">Workspace</string>
   <string name="assistant_page_workspace_desc">After binding, the Agent can use this workspace\'s files and sandbox capabilities</string>
   <string name="assistant_page_workspace_unbound">Not bound</string>

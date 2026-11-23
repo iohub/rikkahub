@@ -506,6 +506,25 @@ internal fun AssistantBasicContent(
                     )
                 }
             }
+
+            // 全身照片：上传一次，之后每次出图都固定占 workflow 的 image1，用来保持人物外观一致
+            formItem(
+                headlineContent = { Text(stringResource(R.string.assistant_page_full_body_photo)) },
+                supportingContent = { Text(stringResource(R.string.assistant_page_full_body_photo_desc)) },
+            ) {
+                ReferencePhotoPicker(
+                    photoId = assistant.fullBodyPhotoId,
+                    photoUrl = assistant.fullBodyPhotoUrl,
+                    onUpdate = { id, url ->
+                        onUpdate(
+                            assistant.copy(
+                                fullBodyPhotoId = id,
+                                fullBodyPhotoUrl = url,
+                            )
+                        )
+                    },
+                )
+            }
         }
     }
 }

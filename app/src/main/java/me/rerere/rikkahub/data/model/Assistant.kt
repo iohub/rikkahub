@@ -46,6 +46,14 @@ data class Assistant(
     val background: String? = null, // 聊天页背景图地址(本地文件 URI 或网络 URL), 为 null 时无背景
     val backgroundOpacity: Float = 1.0f, // 背景图不透明度(0~1)
     val useGradientBackground: Boolean = false, // 开启后聊天页使用动态渐变背景
+    /**
+     * 服务端照片库里的「全身照片」id（`POST /api/photos` 返回）。
+     * 出图时带给服务端，固定占 workflow 的 image1，用于保持人物外观一致性。
+     * 默认 null：旧备份 JSON 里没有这个键，反序列化后就是「没上传过照片」。
+     */
+    val fullBodyPhotoId: String? = null,
+    /** 全身照片的本地 `file://` 预览地址（仅设置页展示用，不参与请求）。 */
+    val fullBodyPhotoUrl: String? = null,
     val modeInjectionIds: Set<Uuid> = emptySet(), // 关联的模式注入 ID
     val lorebookIds: Set<Uuid> = emptySet(), // 关联的 Lorebook ID
     val enabledSkills: Set<String> = emptySet(), // 启用的 skill 名称列表

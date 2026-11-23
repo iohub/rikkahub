@@ -180,6 +180,7 @@ class AssistantDetailVM(
             replaced?.let { old ->
                 checkAvatarDelete(old = old, new = assistant) // 删除旧头像
                 checkBackgroundDelete(old = old, new = assistant) // 删除旧背景
+                checkFullBodyPhotoDelete(old = old, new = assistant) // 删除旧全身照片
             }
         }
     }
@@ -223,6 +224,26 @@ class AssistantDetailVM(
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to delete background file: $oldBackground", e)
+            }
+        }
+    }
+
+    /**
+     * 换了全身照片要把旧的本地预览文件删掉，否则 filesDir/upload 里会留下孤儿文件。
+     * 服务端那张旧照片由 ReferencePhotoPicker 在上传成功时顺手清理（这里拿不到 config）。
+     */
+    fun checkFullBodyPhotoDelete(old: Assistant, new: Assistant) {
+        val oldPhotoUrl = old.fullBodyPhotoUrl
+        val newPhotoUrl = new.fullBodyPhotoUrl
+
+        if (oldPhotoUrl != null && oldPhotoUrl != newPhotoUrl) {
+            try {
+                val oldUri = oldPhotoUrl.toUri()
+                if (oldUri.scheme == "content" || oldUri.scheme == "file") {
+                    filesManager.deleteChatFiles(listOf(oldUri))
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to delete full body photo file: $oldPhotoUrl", e)
             }
         }
     }

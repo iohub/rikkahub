@@ -236,6 +236,68 @@ class ImageGenerationServiceTest {
     }
 
     @Test
+    fun `full body photo takes image 1 so only one user reference is sent`() = runTest {
+        val client = FakeClient { _, _ -> ImageResult.Success(listOf(pngBytes), listOf("a.png"), 1.0, "pid", null) }
+        val service = ImageGenerationService(client, FakeWriter(null), FakeSaver(listOf("file:///tmp/a.png")))
+
+        service.generate(
+            settings = settings(),
+            conversationId = null,
+            request = ImageGenerationService.Request(
+                prompt = "把我的全身照换成海边背景",
+                referenceImages = listOf("data:image/png;base64,AAA", "data:image/png;base64,BBB"),
+                fullBodyPhotoId = "photo-1",
+            ),
+        )
+
+        val remote = client.requests.single()
+        // workflow 只有 image1/image2：全身照片固定占 image1，用户自己的参考图只剩一个槽位
+        assertEquals(listOf("data:image/png;base64,AAA"), remote.images)
+        assertEquals("photo-1", remote.fullBodyPhotoId)
+        assertNull("有全身照片时不是纯文生图", remote.noReference)
+    }
+
+    @Test
+    fun `without a full body photo two user references still fit`() = runTest {
+        val client = FakeClient { _, _ -> ImageResult.Success(listOf(pngBytes), listOf("a.png"), 1.0, "pid", null) }
+        val service = ImageGenerationService(client, FakeWriter(null), FakeSaver(listOf("file:///tmp/a.png")))
+
+        service.generate(
+            settings = settings(),
+            conversationId = null,
+            request = ImageGenerationService.Request(
+                prompt = "把这两张图合成一张",
+                referenceImages = listOf("data:image/png;base64,AAA", "data:image/png;base64,BBB"),
+            ),
+        )
+
+        val remote = client.requests.single()
+        assertEquals(
+            listOf("data:image/png;base64,AAA", "data:image/png;base64,BBB"),
+            remote.images,
+        )
+        assertNull("没绑照片时不该发 full_body_photo_id", remote.fullBodyPhotoId)
+    }
+
+    @Test
+    fun `full body photo alone is not treated as a text to image request`() = runTest {
+        val client = FakeClient { _, _ -> ImageResult.Success(listOf(pngBytes), listOf("a.png"), 1.0, "pid", null) }
+        val service = ImageGenerationService(client, FakeWriter(null), FakeSaver(listOf("file:///tmp/a.png")))
+
+        service.generate(
+            settings = settings(),
+            conversationId = null,
+            request = ImageGenerationService.Request(prompt = "画一张我的全身像", fullBodyPhotoId = "photo-1"),
+        )
+
+        val remote = client.requests.single()
+        assertNull("这次没有会话里的参考图", remote.images)
+        // 全身照片本身就是喂给 image1 的图，置 true 会让服务端把它忽略掉
+        assertNull("有全身照片时不能发 no_reference=true", remote.noReference)
+        assertEquals("photo-1", remote.fullBodyPhotoId)
+    }
+
+    @Test
     fun `timeout is reported as a text part instead of hanging`() = runTest {
         val client = FakeClient { _, _ ->
             // runTest 的虚拟时间会直接跳到超时点，不会真的等 200 秒

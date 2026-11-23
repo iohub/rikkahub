@@ -19,8 +19,8 @@ import me.rerere.rikkahub.data.ai.image.Result as ImageGenerationResult
 import java.io.File
 import kotlin.uuid.Uuid
 
-// 服务端一次最多吃 3 张参考图
-private const val MAX_REFERENCE_IMAGES = 3
+// workflow 的 TextEncodeQwenImageEditPlus 只有 image1/image2 两个图片槽位，服务端最多吃 2 张参考图
+private const val MAX_REFERENCE_IMAGES = 2
 
 // 客户端超时比服务端自己的 timeout 多留一点余量，让服务端先把它自己的超时讲清楚
 private const val TIMEOUT_GRACE_SECONDS = 120L
@@ -55,6 +55,10 @@ class ImageGenerationService(
         /** 参考图，`file://` 路径或 `data:` URL。 */
         val referenceImages: List<String> = emptyList(),
         val noReference: Boolean = false,
+        /**
+         * 助手绑定的服务端全身照片 id；非空时它固定占 image1，用户参考图只剩 1 个槽位。
+         */
+        val fullBodyPhotoId: String? = null,
     )
 
     suspend fun generate(settings: Settings, conversationId: Uuid?, request: Request): List<UIMessagePart> {
@@ -63,10 +67,14 @@ class ImageGenerationService(
         if (config.baseUrl.isBlank()) {
             return listOf(failureText(IMAGE_SERVICE_NOT_CONFIGURED))
         }
+        val fullBodyPhotoId = request.fullBodyPhotoId?.trim()?.takeIf { it.isNotEmpty() }
+        // 全身照片固定占 image1，因此用户自己的参考图只剩 1 个槽位；没有照片时用户可用满 2 个
+        val userImageLimit = if (fullBodyPhotoId != null) MAX_REFERENCE_IMAGES - 1 else MAX_REFERENCE_IMAGES
         val references = withContext(Dispatchers.IO) {
-            request.referenceImages.mapNotNull(::normalizeReferenceImage).take(MAX_REFERENCE_IMAGES)
+            request.referenceImages.mapNotNull(::normalizeReferenceImage).take(userImageLimit)
         }
-        val noReference = request.noReference || references.isEmpty()
+        // 有固定全身照片时永远不是纯文生图：哪怕这次没给参考图，服务端也有一张图要喂给 image1
+        val noReference = fullBodyPhotoId == null && (request.noReference || references.isEmpty())
         val size = request.size?.trim()?.takeIf { SIZE_PATTERN.matches(it) } ?: config.defaultSize
         val steps = request.steps ?: config.steps
 
@@ -88,6 +96,7 @@ class ImageGenerationService(
             noReference = if (noReference) true else null,
             images = references.takeIf { it.isNotEmpty() },
             timeout = config.timeoutSeconds,
+            fullBodyPhotoId = fullBodyPhotoId,
         )
 
         val timeoutSeconds = config.timeoutSeconds + TIMEOUT_GRACE_SECONDS

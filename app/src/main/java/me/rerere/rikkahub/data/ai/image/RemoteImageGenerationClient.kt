@@ -22,6 +22,8 @@ import java.util.concurrent.TimeUnit
 private const val GENERATE_PATH = "/api/generate"
 private const val ASYNC_GENERATE_PATH = "/api/generate/async"
 private const val JOBS_PATH = "/api/jobs"
+// 服务端照片库：上传一次全身照片，之后每次出图带上 photo_id 就能固定占 workflow 的 image1
+private const val PHOTOS_PATH = "/api/photos"
 private const val AUTH_HEADER = "X-Auth-Token"
 private const val MAX_DETAIL_CHARS = 800
 
@@ -40,6 +42,9 @@ private const val CALL_TIMEOUT_MS = 20_000L
 
 // 结果图下载宽松一点：768x768 的 PNG 也有近 1MB，慢链路上 20 秒未必够
 private const val DOWNLOAD_TIMEOUT_MS = 60_000L
+
+// 照片上传是一次性的几 MB body：既不能像短请求那样 20 秒收口，也不必按出图时长等
+private const val UPLOAD_TIMEOUT_MS = 60_000L
 
 private const val POLL_INTERVAL_MS = 2_000L
 
@@ -93,6 +98,47 @@ data class RemoteGenerateRequest(
      * 为 null 时不进请求体，保持旧同步接口的 wire 契约。
      */
     @SerialName("client_job_id") val clientJobId: String? = null,
+    /**
+     * 服务端照片库里的全身照片 id。
+     *
+     * 带上后服务端会把这张照片固定放在 images 最前（占 workflow 的 image1），用户自己传的
+     * images 顺延到 image2。为 null 时不进请求体，保持没有照片时的 wire 契约不变。
+     */
+    @SerialName("full_body_photo_id") val fullBodyPhotoId: String? = null,
+)
+
+/** 服务端照片库里的一张照片（`POST /api/photos` 与 `GET /api/photos` 的条目）。 */
+@Serializable
+data class RemotePhotoInfo(
+    @SerialName("photo_id") val photoId: String,
+    val filename: String? = null,
+    val mime: String? = null,
+    @SerialName("size_bytes") val sizeBytes: Long? = null,
+    val url: String? = null,
+    @SerialName("download_url") val downloadUrl: String? = null,
+)
+
+/** 上传照片的请求体：`image` 是 `data:image/png;base64,...` 形式的完整 data URL。 */
+@Serializable
+private data class RemotePhotoUploadRequest(
+    val image: String,
+    val filename: String? = null,
+)
+
+/** `POST /api/photos` 的响应。 */
+@Serializable
+private data class RemotePhotoUploadResponse(
+    val ok: Boolean = false,
+    val photo: RemotePhotoInfo? = null,
+    val error: String? = null,
+)
+
+/** `DELETE /api/photos/<id>` 的响应。 */
+@Serializable
+private data class RemotePhotoDeleteResponse(
+    val ok: Boolean = false,
+    val deleted: Boolean = false,
+    val error: String? = null,
 )
 
 @Serializable
@@ -268,6 +314,12 @@ open class RemoteImageGenerationClient(
             .build()
     }
 
+    private val uploadClient: OkHttpClient by lazy {
+        okHttpClient.newBuilder()
+            .callTimeout(UPLOAD_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            .build()
+    }
+
     /**
      * 跑一次出图：先异步提交拿到任务，再轮询到任务终态。
      *
@@ -384,6 +436,103 @@ open class RemoteImageGenerationClient(
             .mapNotNull { imageUrl(it, baseUrl) }
             .mapNotNull { downloadWithRetry(it, config, baseUrl) }
     }
+
+    // region 照片库（全身照片）
+
+    /**
+     * 上传一张照片进服务端照片库，返回服务端分配的 `photo_id`。
+     *
+     * [dataUrl] 必须是完整的 `data:image/...;base64,...`（服务端不接受裸 base64）。
+     * 这是几 MB 的请求体，所以用独立的 60 秒超时；任何失败都折成 `Result.failure`，
+     * 绝不把异常抛给 UI —— 上传失败只该让用户看到一句人话，不该让设置页崩掉。
+     */
+    open suspend fun uploadPhoto(
+        config: ImageGenerationConfig,
+        dataUrl: String,
+        filename: String? = null,
+    ): kotlin.Result<RemotePhotoInfo> {
+        val baseUrl = resolveBaseUrl(config.baseUrl)
+        if (baseUrl.isEmpty()) {
+            return kotlin.Result.failure(IllegalStateException(IMAGE_SERVICE_NOT_CONFIGURED))
+        }
+        val payload = dataUrl.trim()
+        if (payload.isEmpty()) {
+            return kotlin.Result.failure(IllegalArgumentException("照片内容为空，请重新选择图片"))
+        }
+        return try {
+            val body = RequestJson
+                .encodeToString(RemotePhotoUploadRequest(image = payload, filename = filename))
+                .toRequestBody(JSON_MEDIA_TYPE)
+            val request = Request.Builder()
+                .url(baseUrl + PHOTOS_PATH)
+                .post(body)
+                .applyAuth(config)
+                .build()
+            when (val outcome = performCall(uploadClient, request, UPLOAD_TIMEOUT_MS)) {
+                is HttpOutcome.Transient -> kotlin.Result.failure(IllegalStateException(outcome.message))
+                is HttpOutcome.Response -> {
+                    val parsed = decodeOrNull<RemotePhotoUploadResponse>(outcome.text)
+                    val photo = parsed?.photo
+                    if (outcome.isSuccessful && parsed?.ok == true && photo != null) {
+                        kotlin.Result.success(photo)
+                    } else {
+                        val reason = parsed?.error?.takeIf { it.isNotBlank() }
+                            ?: "上传照片失败（HTTP ${outcome.code}）"
+                        // 413 是照片超过服务端 16MB 上限，单看状态码没人看得懂
+                        val hint = httpHint(outcome.code)
+                            ?: if (outcome.code == 413) "照片太大了，服务端上限 16MB" else null
+                        // 非 JSON 的错误响应（网关 HTML）也留一点线索，否则只剩一个状态码
+                        val snippet = if (parsed == null) bodySnippet(outcome.text) else null
+                        kotlin.Result.failure(
+                            IllegalStateException(
+                                listOfNotNull(reason, hint, snippet).joinToString("；")
+                            )
+                        )
+                    }
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (t: Throwable) {
+            kotlin.Result.failure(IllegalStateException(describe(t)))
+        }
+    }
+
+    /**
+     * 删除服务端照片库里的照片。
+     *
+     * best-effort：换照片/移除照片时顺手清掉旧照片，失败只返回 false——一次清理请求
+     * 不该拦住本地流程（旧照片留在服务端只是占点磁盘）。404 视为「已经不在了」，算成功。
+     */
+    open suspend fun deletePhoto(config: ImageGenerationConfig, photoId: String): Boolean {
+        val baseUrl = resolveBaseUrl(config.baseUrl)
+        if (baseUrl.isEmpty()) return false
+        val id = photoId.trim()
+        if (id.isEmpty()) return false
+        return try {
+            val encoded = URLEncoder.encode(id, Charsets.UTF_8.name()).replace("+", "%20")
+            val request = Request.Builder()
+                .url("$baseUrl$PHOTOS_PATH/$encoded")
+                .delete()
+                .applyAuth(config)
+                .build()
+            when (val outcome = performCall(shortCallClient, request, CALL_TIMEOUT_MS)) {
+                is HttpOutcome.Transient -> false
+                is HttpOutcome.Response -> if (outcome.code == 404) {
+                    true
+                } else {
+                    val parsed = decodeOrNull<RemotePhotoDeleteResponse>(outcome.text)
+                    outcome.isSuccessful && (parsed?.ok == true || parsed?.deleted == true)
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (t: Throwable) {
+            false
+        }
+    }
+
+    // endregion
 
     // region 状态机
 

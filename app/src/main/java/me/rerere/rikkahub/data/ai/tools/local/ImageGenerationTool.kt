@@ -19,13 +19,15 @@ import me.rerere.rikkahub.data.ai.image.ImageGenerationService
 import me.rerere.rikkahub.data.datastore.Settings
 import kotlin.uuid.Uuid
 
-// systemPrompt 里最多列出的参考图数量，和服务端一次能吃下的张数一致
-private const val MAX_REFERENCE_IMAGES = 3
+// workflow 的 TextEncodeQwenImageEditPlus 只有 image1/image2 两个图片槽位，服务端一次最多吃 2 张参考图
+private const val MAX_REFERENCE_IMAGES = 2
 
 internal fun buildImageGenerationTool(
     service: ImageGenerationService,
     settingsProvider: () -> Settings,
     conversationId: Uuid?,
+    // 助手绑定的服务端全身照片 id：非空时它固定占 image1，用户参考图只剩 1 个槽位
+    fullBodyPhotoIdProvider: () -> String? = { null },
 ): Tool = Tool(
     name = "generate_image",
     description = """
@@ -37,11 +39,13 @@ internal fun buildImageGenerationTool(
         The prompt must cover the subject, its quantity, colors, composition, any text that has to appear inside
         the image (verbatim, in its original language), and the desired style.
         For image-to-image or editing, pass the existing pictures as reference_images using the file:// paths listed
-        in <available_reference_images>; at most $MAX_REFERENCE_IMAGES pictures, newest last. Omit them for pure
-        text-to-image.
+        in <available_reference_images>; at most $MAX_REFERENCE_IMAGES pictures, newest last, and only 1 when the
+        user has a fixed full-body photo attached. Omit them for pure text-to-image.
         One run takes 20 seconds to 3 minutes, and noticeably longer when the service is cold starting.
     """.trimIndent().replace("\n", " "),
     parameters = {
+        // 有固定全身照片时它自己就占掉 image1，模型只能用剩下的槽位
+        val imageSlots = if (fullBodyPhotoIdProvider() != null) MAX_REFERENCE_IMAGES - 1 else MAX_REFERENCE_IMAGES
         InputSchema.Obj(
             properties = buildJsonObject {
                 put("prompt", buildJsonObject {
@@ -77,7 +81,7 @@ internal fun buildImageGenerationTool(
                     put(
                         "description",
                         "file:// paths of images from this conversation to edit or use as reference, at most " +
-                            "$MAX_REFERENCE_IMAGES. Omit for pure text-to-image."
+                            "$imageSlots. Omit for pure text-to-image."
                     )
                     put("items", buildJsonObject { put("type", "string") })
                 })
@@ -93,7 +97,9 @@ internal fun buildImageGenerationTool(
             required = listOf("prompt"),
         )
     },
-    systemPrompt = { _, messages -> buildReferenceImagesPrompt(messages) },
+    systemPrompt = { _, messages ->
+        buildReferenceImagesPrompt(messages, hasFullBodyPhoto = fullBodyPhotoIdProvider() != null)
+    },
     needsApproval = { false },
     execute = { args ->
         try {
@@ -101,7 +107,10 @@ internal fun buildImageGenerationTool(
                 service.generate(
                     settings = settingsProvider(),
                     conversationId = conversationId,
-                    request = request,
+                    // 全身照片 id 每次执行时现取：助手页刚换过照片，这里立刻就要用新的
+                    request = request.copy(
+                        fullBodyPhotoId = fullBodyPhotoIdProvider()?.trim()?.takeIf { it.isNotEmpty() },
+                    ),
                 )
             } ?: listOf(UIMessagePart.Text(errorJson("prompt 不能为空")))
         } catch (e: CancellationException) {
@@ -191,21 +200,47 @@ internal fun parseImageGenerationRequest(args: JsonElement): ImageGenerationServ
     )
 }
 
-/** 把会话里已有的本地图片列给模型，让它可以挑几张当参考图；没有就返回空串，不占系统提示词。 */
-internal fun buildReferenceImagesPrompt(messages: List<UIMessage>): String {
+/**
+ * 把会话里已有的本地图片列给模型，让它可以挑几张当参考图；没有就返回空串，不占系统提示词。
+ *
+ * [hasFullBodyPhoto] 为 true 表示这个助手绑了一张固定的全身照片，出图时它固定占 image1，
+ * 所以清单只能列 `MAX_REFERENCE_IMAGES - 1` 张，并额外说明这条固定参考图的存在。
+ */
+internal fun buildReferenceImagesPrompt(
+    messages: List<UIMessage>,
+    hasFullBodyPhoto: Boolean = false,
+): String {
+    // 有固定全身照片时它自己占掉一个槽位，会话里的图只剩 1 个名额
+    val slots = if (hasFullBodyPhoto) MAX_REFERENCE_IMAGES - 1 else MAX_REFERENCE_IMAGES
     val urls = messages.asSequence()
         .flatMap { it.parts.asSequence() }
         .filterIsInstance<UIMessagePart.Image>()
         .map { it.url }
         .filter { it.startsWith("file://") }
         .toList()
-        .takeLast(MAX_REFERENCE_IMAGES)
-    if (urls.isEmpty()) return ""
+        .takeLast(slots)
+    // 既没有会话里的图，也没有固定全身照片：一句话都不用说
+    if (urls.isEmpty() && !hasFullBodyPhoto) return ""
     return buildString {
-        appendLine("<available_reference_images>")
-        appendLine("Images from this conversation that can be used as generate_image reference_images:")
-        urls.forEach { appendLine(it) }
-        append("</available_reference_images>")
+        if (urls.isNotEmpty()) {
+            appendLine("<available_reference_images>")
+            appendLine("Images from this conversation that can be used as generate_image reference_images:")
+            urls.forEach { appendLine(it) }
+            append("</available_reference_images>")
+        }
+        if (hasFullBodyPhoto) {
+            if (urls.isNotEmpty()) appendLine()
+            appendLine("<fixed_full_body_photo>")
+            appendLine(
+                "The user has attached a fixed full-body reference photo of themselves. " +
+                    "It is ALWAYS sent as reference image 1."
+            )
+            appendLine(
+                "You may additionally supply at most ${MAX_REFERENCE_IMAGES - 1} image from this conversation " +
+                    "(it becomes reference image 2)."
+            )
+            append("</fixed_full_body_photo>")
+        }
     }
 }
 

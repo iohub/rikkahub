@@ -49,7 +49,12 @@ class LocalTools(
         )
     }
 
-    fun getTools(options: List<LocalToolOption>, conversationId: Uuid? = null): List<Tool> {
+    fun getTools(
+        options: List<LocalToolOption>,
+        conversationId: Uuid? = null,
+        // 助手的全身照片 id：非空时出图会把它固定当作 workflow 的 image1
+        fullBodyPhotoId: String? = null,
+    ): List<Tool> {
         val tools = mutableListOf<Tool>()
         if (options.contains(LocalToolOption.JavascriptEngine)) {
             tools.add(javascriptTool)
@@ -83,6 +88,7 @@ class LocalTools(
                     service = imageGenerationService,
                     settingsProvider = { settingsStore.settingsFlow.value },
                     conversationId = conversationId,
+                    fullBodyPhotoIdProvider = { fullBodyPhotoId },
                 )
             )
             // 同一个开关带出查询工具：出图断网/中断后，模型要能按 job_id 把产物找回来

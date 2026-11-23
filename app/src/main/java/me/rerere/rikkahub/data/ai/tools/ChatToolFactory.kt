@@ -63,7 +63,8 @@ class ChatToolFactory(
             if (shouldUseExternalWebSearch(assistant, model)) {
                 addAll(createSearchTools(settings))
             }
-            addAll(localTools.getTools(assistant.localTools, conversationId))
+            // 助手的全身照片 id 一起传下去：出图时它会固定占 workflow 的 image1
+            addAll(localTools.getTools(assistant.localTools, conversationId, assistant.fullBodyPhotoId))
             if (assistant.enableRecentChatsReference) {
                 addAll(createConversationTools(conversationRepository, assistant.id))
             }
