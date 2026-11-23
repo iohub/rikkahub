@@ -2081,6 +2081,8 @@
   <string name="setting_image_generation_enable_prompt_agent">Использовать отдельный агент промпта</string>
   <string name="setting_image_generation_enable_prompt_agent_desc">Если выключить, текст модели уйдёт в сервис без изменений</string>
   <string name="setting_image_generation_steps">Шаги сэмплирования</string>
+  <string name="setting_image_generation_force_default_size">Всегда использовать размер по умолчанию</string>
+  <string name="setting_image_generation_force_default_size_desc">Игнорировать размер, указанный моделью при вызове инструмента, и всегда генерировать в размере по умолчанию, указанном ниже.</string>
   <string name="setting_image_generation_default_size">Размер по умолчанию</string>
   <string name="setting_image_generation_timeout">Тайм-аут (секунды)</string>
   <string name="setting_image_generation_timeout_desc">Холодный старт может занять 1–3 минуты</string>

@@ -53,7 +53,8 @@ class ImageGenerationServiceTest {
         val service = ImageGenerationService(client, writer, saver)
 
         val parts = service.generate(
-            settings = settings(),
+            // 这个用例要验证「模型指定尺寸生效」的链路，因此显式关掉强制默认尺寸
+            settings = settings(forceDefaultSize = false),
             conversationId = null,
             request = ImageGenerationService.Request(
                 prompt = "一只戴墨镜的柴犬",
@@ -360,6 +361,84 @@ class ImageGenerationServiceTest {
         assertTrue("必须把失败原因留给排查", body.getValue("detail").jsonPrimitive.content.isNotBlank())
     }
 
+    // region forceDefaultSize
+
+    @Test
+    fun `force default size ignores the size the model asked for`() = runTest {
+        val client = FakeClient { _, _ -> ImageResult.Success(listOf(pngBytes), listOf("a.png"), 1.0, "pid", null) }
+        val writer = FakeWriter(ImagePromptAgent.Draft("rewritten", "neg"))
+        val saver = FakeSaver(listOf("file:///tmp/a.png"))
+        val service = ImageGenerationService(client, writer, saver)
+
+        val parts = service.generate(
+            // 不显式传 forceDefaultSize，验证「默认就是开启」
+            settings = settings(defaultSize = "1024x1536"),
+            conversationId = null,
+            request = ImageGenerationService.Request(prompt = "画一张竖版海报", size = "1920x1080"),
+        )
+
+        val remote = client.requests.single()
+        assertEquals("强制默认尺寸开启时必须忽略模型给的尺寸", "1024x1536", remote.size)
+        // 改写 agent 也要看到最终生效的尺寸，免得提示词按 1920x1080 的构图去写
+        assertEquals("1024x1536", writer.calls.single().size)
+        // 回显给模型的摘要必须是真正发给服务端的尺寸
+        assertEquals("1024x1536", summaryOf(parts).getValue("size").jsonPrimitive.content)
+    }
+
+    @Test
+    fun `when forcing is off a valid requested size wins`() = runTest {
+        val client = FakeClient { _, _ -> ImageResult.Success(listOf(pngBytes), listOf("a.png"), 1.0, "pid", null) }
+        val writer = FakeWriter(ImagePromptAgent.Draft("rewritten", "neg"))
+        val saver = FakeSaver(listOf("file:///tmp/a.png"))
+        val service = ImageGenerationService(client, writer, saver)
+
+        val parts = service.generate(
+            settings = settings(defaultSize = "1024x1536", forceDefaultSize = false),
+            conversationId = null,
+            request = ImageGenerationService.Request(prompt = "画一张横版海报", size = "1920x1080"),
+        )
+
+        val remote = client.requests.single()
+        assertEquals("关掉开关后模型给的合法尺寸要照用", "1920x1080", remote.size)
+        assertEquals("1920x1080", summaryOf(parts).getValue("size").jsonPrimitive.content)
+    }
+
+    @Test
+    fun `when forcing is off an illegal requested size falls back to the configured default`() = runTest {
+        val client = FakeClient { _, _ -> ImageResult.Success(listOf(pngBytes), listOf("a.png"), 1.0, "pid", null) }
+        val writer = FakeWriter(ImagePromptAgent.Draft("rewritten", "neg"))
+        val saver = FakeSaver(listOf("file:///tmp/a.png"))
+        val service = ImageGenerationService(client, writer, saver)
+
+        val parts = service.generate(
+            settings = settings(defaultSize = "1024x1536", forceDefaultSize = false),
+            conversationId = null,
+            request = ImageGenerationService.Request(prompt = "画一张方图", size = "乱写的"),
+        )
+
+        val remote = client.requests.single()
+        assertEquals("非法尺寸要回落到设置里的默认尺寸", "1024x1536", remote.size)
+        assertEquals("1024x1536", summaryOf(parts).getValue("size").jsonPrimitive.content)
+    }
+
+    @Test
+    fun `a corrupted configured size still falls back to a legal one`() = runTest {
+        val client = FakeClient { _, _ -> ImageResult.Success(listOf(pngBytes), listOf("a.png"), 1.0, "pid", null) }
+        val service = ImageGenerationService(client, FakeWriter(null), FakeSaver(listOf("file:///tmp/a.png")))
+
+        // 备份导入 / 手改 DataStore 都可能把默认尺寸写坏，这时候也要发出一个合法尺寸
+        service.generate(
+            settings = settings(defaultSize = "1024 x 1024", forceDefaultSize = true),
+            conversationId = null,
+            request = ImageGenerationService.Request(prompt = "一只猫"),
+        )
+
+        // 与 ImageGenerationService 里的 FALLBACK_IMAGE_SIZE 对齐
+        assertEquals("1024x1024", client.requests.single().size)
+    }
+
+    // endregion
+
     // region fakes & helpers
 
     private fun settings(
@@ -367,11 +446,16 @@ class ImageGenerationServiceTest {
         enablePromptAgent: Boolean = true,
         timeoutSeconds: Int = 1200,
         steps: Int = 4,
+        defaultSize: String = "1024x1024",
+        // 默认值与 ImageGenerationConfig 保持一致：生产环境默认强制默认尺寸
+        forceDefaultSize: Boolean = true,
     ) = Settings(
         imageGenerationConfig = ImageGenerationConfig(
             baseUrl = baseUrl,
             timeoutSeconds = timeoutSeconds,
             steps = steps,
+            defaultSize = defaultSize,
+            forceDefaultSize = forceDefaultSize,
             enablePromptAgent = enablePromptAgent,
         )
     )

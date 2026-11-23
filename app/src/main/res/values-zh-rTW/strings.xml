@@ -2079,6 +2079,8 @@
   <string name="setting_image_generation_enable_prompt_agent">啟用獨立提示詞 agent</string>
   <string name="setting_image_generation_enable_prompt_agent_desc">關掉後直接把模型原話送給出圖服務，不再改寫</string>
   <string name="setting_image_generation_steps">取樣步數</string>
+  <string name="setting_image_generation_force_default_size">強制使用預設尺寸</string>
+  <string name="setting_image_generation_force_default_size_desc">忽略模型呼叫工具時指定的尺寸，一律使用下方的預設尺寸。</string>
   <string name="setting_image_generation_default_size">預設尺寸</string>
   <string name="setting_image_generation_timeout">逾時時間（秒）</string>
   <string name="setting_image_generation_timeout_desc">服務冷啟動可能要 1~3 分鐘</string>

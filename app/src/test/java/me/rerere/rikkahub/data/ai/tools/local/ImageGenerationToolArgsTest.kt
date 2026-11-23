@@ -280,10 +280,13 @@ class ImageGenerationToolArgsTest {
         },
     )
 
-    private fun settingsWith(defaultSize: String) = Settings(
+    // 这个文件聚焦「工具层把参数原样转给服务层」，因此默认关掉强制默认尺寸，
+    // 好让模型显式指定的 size 能一路透传到 RemoteGenerateRequest；开关本身由 ImageGenerationServiceTest 覆盖。
+    private fun settingsWith(defaultSize: String, forceDefaultSize: Boolean = false) = Settings(
         imageGenerationConfig = ImageGenerationConfig(
             baseUrl = "http://127.0.0.1:8080",
             defaultSize = defaultSize,
+            forceDefaultSize = forceDefaultSize,
             enablePromptAgent = false,
         )
     )

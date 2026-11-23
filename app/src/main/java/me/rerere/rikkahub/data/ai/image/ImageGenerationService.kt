@@ -30,6 +30,9 @@ private const val RECENT_JOB_LIMIT = 10
 
 private val SIZE_PATTERN = Regex("""^\d+x\d+$""")
 
+// 设置里的默认尺寸被写坏时的兜底值：宁可出一个正常尺寸的图，也不要发非法尺寸给服务端
+private const val FALLBACK_IMAGE_SIZE = "1024x1024"
+
 /** 把生成好的图片字节存成聊天附件，返回可直接放进 UIMessagePart.Image 的 url。 */
 fun interface ImageFileSaver {
     fun save(bytes: List<ByteArray>, displayName: String, mimeType: String): List<String>
@@ -75,7 +78,16 @@ class ImageGenerationService(
         }
         // 有固定全身照片时永远不是纯文生图：哪怕这次没给参考图，服务端也有一张图要喂给 image1
         val noReference = fullBodyPhotoId == null && (request.noReference || references.isEmpty())
-        val size = request.size?.trim()?.takeIf { SIZE_PATTERN.matches(it) } ?: config.defaultSize
+        // 强制默认尺寸：忽略模型在工具调用里指定的尺寸，一律用设置里的默认尺寸。
+        // 两种情况都要过一遍正则：设置页理论上只落盘合法值（SizePattern 校验后才 update），
+        // 但备份导入 / 手改 DataStore 都可能写坏，这里再兜一次底。
+        val size = if (config.forceDefaultSize) {
+            config.defaultSize.trim().takeIf { SIZE_PATTERN.matches(it) } ?: FALLBACK_IMAGE_SIZE
+        } else {
+            request.size?.trim()?.takeIf { SIZE_PATTERN.matches(it) }
+                ?: config.defaultSize.trim().takeIf { SIZE_PATTERN.matches(it) }
+                ?: FALLBACK_IMAGE_SIZE
+        }
         val steps = request.steps ?: config.steps
 
         val draft = if (config.enablePromptAgent) {

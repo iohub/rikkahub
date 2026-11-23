@@ -21,6 +21,13 @@ data class ImageGenerationConfig(
     /** 默认出图尺寸，格式 `宽x高`，如 `1024x1024`；工具没指定尺寸时用它。 */
     val defaultSize: String = "1024x1024",
     /**
+     * 强制使用 [defaultSize]：开启后忽略模型在 `generate_image` 工具调用里指定的尺寸。
+     *
+     * 为什么默认开：workflow 的 latent 尺寸由服务端参数决定，模型乱填尺寸（比如 1920x1080
+     * 之外的怪值）会让出图比例失控；对普通用户来说「尺寸稳定」比「模型能自由选尺寸」更重要。
+     */
+    val forceDefaultSize: Boolean = true,
+    /**
      * 改写绘图 prompt 的独立 agent 用哪个模型；null 时回退快速模型，再回退对话模型。
      *
      * 和对话模型分开是为了避免绘图 prompt 的风格与上下文污染聊天。

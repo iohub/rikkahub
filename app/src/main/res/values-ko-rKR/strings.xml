@@ -2081,6 +2081,8 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="setting_image_generation_enable_prompt_agent">별도 프롬프트 에이전트 사용</string>
   <string name="setting_image_generation_enable_prompt_agent_desc">끄면 모델이 쓴 문장을 그대로 이미지 서비스로 보냅니다</string>
   <string name="setting_image_generation_steps">샘플링 스텝 수</string>
+  <string name="setting_image_generation_force_default_size">항상 기본 크기 사용</string>
+  <string name="setting_image_generation_force_default_size_desc">도구 호출 시 모델이 지정한 크기를 무시하고 항상 아래의 기본 크기로 생성합니다.</string>
   <string name="setting_image_generation_default_size">기본 크기</string>
   <string name="setting_image_generation_timeout">제한 시간(초)</string>
   <string name="setting_image_generation_timeout_desc">콜드 스타트에 1~3분이 걸릴 수 있습니다</string>

@@ -250,6 +250,20 @@ fun SettingImageGenerationPage(vm: SettingVM = koinViewModel()) {
                     )
                 }
 
+                // 强制使用默认尺寸：默认开启，开启后模型在工具调用里填的 size 一律被忽略
+                switchItem(
+                    checked = config.forceDefaultSize,
+                    onCheckedChange = { forced ->
+                        update { latest -> latest.copy(forceDefaultSize = forced) }
+                    },
+                    supportingContent = {
+                        Text(stringResource(R.string.setting_image_generation_force_default_size_desc))
+                    },
+                    headlineContent = {
+                        Text(stringResource(R.string.setting_image_generation_force_default_size))
+                    },
+                )
+
                 formItem(
                     headlineContent = {
                         Text(stringResource(R.string.setting_image_generation_default_size))

@@ -2079,6 +2079,8 @@
   <string name="setting_image_generation_enable_prompt_agent">تفعيل وكيل الموجّه المستقل</string>
   <string name="setting_image_generation_enable_prompt_agent_desc">عند الإيقاف تُرسل مخرجات النموذج كما هي إلى خدمة الصور</string>
   <string name="setting_image_generation_steps">خطوات أخذ العينات</string>
+  <string name="setting_image_generation_force_default_size">استخدم الحجم الافتراضي دائمًا</string>
+  <string name="setting_image_generation_force_default_size_desc">تجاهل أي حجم يمرره النموذج عند استدعاء الأداة، وولّد الصورة دائمًا بالحجم الافتراضي أدناه.</string>
   <string name="setting_image_generation_default_size">الحجم الافتراضي</string>
   <string name="setting_image_generation_timeout">المهلة (بالثواني)</string>
   <string name="setting_image_generation_timeout_desc">قد يستغرق التشغيل البارد من 1 إلى 3 دقائق</string>

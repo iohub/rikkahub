@@ -62,7 +62,7 @@ internal fun buildImageGenerationTool(
                 })
                 put("size", buildJsonObject {
                     put("type", "string")
-                    put("description", "Output resolution as WxH, e.g. 1024x1024 or 1024x1536. Defaults to the configured size.")
+                    put("description", "Output resolution as WxH, e.g. 1024x1024 or 1024x1536. Defaults to the configured size. Ignored when the image service is configured to always use its default size.")
                 })
                 put("steps", buildJsonObject {
                     put("type", "integer")
