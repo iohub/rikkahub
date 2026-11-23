@@ -30,6 +30,7 @@ import me.rerere.hugeicons.stroke.Calendar03
 import me.rerere.hugeicons.stroke.ChartLineData01
 import me.rerere.hugeicons.stroke.ClipboardPaste
 import me.rerere.hugeicons.stroke.Clock01
+import me.rerere.hugeicons.stroke.Image02
 import me.rerere.hugeicons.stroke.JavaScript
 import me.rerere.hugeicons.stroke.MessageQuestion
 import me.rerere.hugeicons.stroke.SmartPhone01
@@ -104,6 +105,7 @@ private fun AssistantLocalToolContent(
     val toaster = LocalToaster.current
     val navController = LocalNavController.current
     val settingsStore: SettingsStore = koinInject()
+    val settings by settingsStore.settingsFlow.collectAsStateWithLifecycle()
     val phoneUseManager: PhoneUseManager = koinInject()
     val phoneUseServiceOn = phoneUseManager.controller.collectAsStateWithLifecycle().value != null
     val permissionRequiredText =
@@ -262,6 +264,25 @@ private fun AssistantLocalToolContent(
                 icon = HugeIcons.ChartLineData01,
                 title = R.string.assistant_page_local_tools_chart_display_title,
                 description = R.string.assistant_page_local_tools_chart_display_desc,
+            )
+            toolItem(
+                option = LocalToolOption.ImageGeneration,
+                icon = HugeIcons.Image02,
+                title = { Text(stringResource(R.string.assistant_page_local_tools_image_generation_title)) },
+                description = {
+                    Column {
+                        Text(stringResource(R.string.assistant_page_local_tools_image_generation_desc))
+                        // 没填服务地址时调用会直接失败，提前在这里说清楚
+                        if (LocalToolOption.ImageGeneration in assistant.localTools &&
+                            settings.imageGenerationConfig.baseUrl.isBlank()
+                        ) {
+                            Text(
+                                text = stringResource(R.string.assistant_page_local_tools_image_generation_not_configured),
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    }
+                },
             )
             // 只有 github 渠道的 Android 11 及以上才有
             if (PhoneUseManager.isSupported) {

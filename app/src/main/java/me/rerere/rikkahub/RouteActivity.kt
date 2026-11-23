@@ -132,6 +132,7 @@ import me.rerere.rikkahub.ui.pages.setting.SettingSearchDetailPage
 import me.rerere.rikkahub.ui.pages.setting.SettingSearchPage
 import me.rerere.rikkahub.ui.pages.setting.SettingMediaPage
 import me.rerere.rikkahub.ui.pages.setting.SettingMediaProviderDetailPage
+import me.rerere.rikkahub.ui.pages.setting.SettingImageGenerationPage
 import me.rerere.rikkahub.ui.pages.setting.SettingRemoteTTSPage
 import me.rerere.rikkahub.ui.pages.setting.SettingSpeechPage
 import me.rerere.rikkahub.ui.pages.setting.SettingGlobalSshKeyPage
@@ -539,6 +540,10 @@ class RouteActivity : ComponentActivity() {
                                 SettingMediaProviderDetailPage(id = Uuid.parse(key.providerId))
                             }
 
+                            entry<Screen.SettingImageGeneration> {
+                                SettingImageGenerationPage()
+                            }
+
                             entry<Screen.SettingMcp> {
                                 SettingMcpPage()
                             }
@@ -812,6 +817,10 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data class SettingMediaProviderDetail(val providerId: String) : Screen
+
+    /** 自建的远程出图服务 */
+    @Serializable
+    data object SettingImageGeneration : Screen
 
     @Serializable
     data object SettingMcp : Screen

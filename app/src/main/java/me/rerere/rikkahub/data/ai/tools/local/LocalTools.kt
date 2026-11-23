@@ -2,11 +2,13 @@ package me.rerere.rikkahub.data.ai.tools.local
 
 import android.content.Context
 import me.rerere.ai.core.Tool
+import me.rerere.rikkahub.data.ai.image.ImageGenerationService
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.event.AppEventBus
 import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.phoneuse.PhoneUseManager
 import me.rerere.rikkahub.phoneuse.isFloatingChatWindowOn
+import kotlin.uuid.Uuid
 
 class LocalTools(
     private val context: Context,
@@ -14,6 +16,7 @@ class LocalTools(
     private val settingsStore: SettingsStore,
     private val phoneUseManager: PhoneUseManager,
     private val filesManager: FilesManager,
+    private val imageGenerationService: ImageGenerationService,
 ) {
     val javascriptTool by lazy { buildJavascriptTool() }
 
@@ -46,7 +49,7 @@ class LocalTools(
         )
     }
 
-    fun getTools(options: List<LocalToolOption>): List<Tool> {
+    fun getTools(options: List<LocalToolOption>, conversationId: Uuid? = null): List<Tool> {
         val tools = mutableListOf<Tool>()
         if (options.contains(LocalToolOption.JavascriptEngine)) {
             tools.add(javascriptTool)
@@ -73,6 +76,15 @@ class LocalTools(
         // 不支持的渠道和系统版本上，之前在别处开过（比如导入的备份）也不提供
         if (options.contains(LocalToolOption.PhoneUse) && PhoneUseManager.isSupported) {
             tools.add(phoneUseTool)
+        }
+        if (options.contains(LocalToolOption.ImageGeneration)) {
+            tools.add(
+                buildImageGenerationTool(
+                    service = imageGenerationService,
+                    settingsProvider = { settingsStore.settingsFlow.value },
+                    conversationId = conversationId,
+                )
+            )
         }
         return tools
     }

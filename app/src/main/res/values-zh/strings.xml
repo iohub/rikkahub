@@ -1886,6 +1886,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="stats_page_source_translation">翻译</string>
   <string name="stats_page_source_memory">记忆</string>
   <string name="stats_page_source_ocr">OCR</string>
+  <string name="stats_page_source_image_prompt">出图提示词</string>
   <string name="stats_page_source_reviewer">回复审查</string>
   <string name="assistant_page_memory_empty">暂无记忆</string>
   <string name="assistant_page_memory_empty_hint">聊天时，助手会记住你告诉它的内容。你也可以点按 + 添加一条记忆</string>
@@ -2229,4 +2230,25 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_remote_tts_cache_clear">清空缓存</string>
   <string name="setting_remote_tts_cache_clear_confirm">将删除本机 %1$s 的缓存语音？缓存可以重新生成，但下次播放需要重新请求服务端。</string>
   <string name="setting_remote_tts_cache_cleared">已清空 %1$d 条缓存</string>
+
+  <!-- Remote image generation -->
+  <string name="assistant_page_local_tools_image_generation_title">图片生成</string>
+  <string name="assistant_page_local_tools_image_generation_desc">让 AI 在你自建的出图服务上绘制或修改图片</string>
+  <string name="assistant_page_local_tools_image_generation_not_configured">还没填出图服务地址，开启后调用会直接报错。请到「设置 → 图片生成服务」里填写。</string>
+  <string name="setting_page_image_generation">图片生成服务</string>
+  <string name="setting_page_image_generation_desc">通过自建的 ComfyUI 服务出图</string>
+  <string name="setting_image_generation_base_url">服务地址</string>
+  <string name="setting_image_generation_base_url_desc">请求会 POST 到 {baseUrl}/api/generate</string>
+  <string name="setting_image_generation_token">访问令牌</string>
+  <string name="setting_image_generation_token_desc">服务端用 --token 启动时才需要</string>
+  <string name="setting_image_generation_prompt_model">出图提示词模型</string>
+  <string name="setting_image_generation_prompt_model_desc">由独立模型先把你的需求改写成扩散模型能用的提示词，再送出去渲染</string>
+  <string name="setting_image_generation_prompt_model_follow_fast">跟随快速模型</string>
+  <string name="setting_image_generation_enable_prompt_agent">启用独立提示词 agent</string>
+  <string name="setting_image_generation_enable_prompt_agent_desc">关掉后就把模型原话直接送给出图服务，不再改写</string>
+  <string name="setting_image_generation_steps">采样步数</string>
+  <string name="setting_image_generation_default_size">默认尺寸</string>
+  <string name="setting_image_generation_timeout">超时时间（秒）</string>
+  <string name="setting_image_generation_timeout_desc">服务冷启动可能要 1~3 分钟</string>
+  <string name="setting_image_generation_not_configured">先填好下面的服务地址，才能开始出图</string>
 </resources>

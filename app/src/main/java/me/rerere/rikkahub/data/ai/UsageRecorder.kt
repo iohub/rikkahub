@@ -29,6 +29,7 @@ enum class UsageSource {
     MEMORY,
     OCR,
     REVIEWER,
+    IMAGE_PROMPT,
 }
 
 /** 记录用量时附带的归属信息 */

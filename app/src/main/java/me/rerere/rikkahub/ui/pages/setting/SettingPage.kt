@@ -48,6 +48,7 @@ import me.rerere.hugeicons.stroke.ImageUpload
 import me.rerere.hugeicons.stroke.Key01
 import me.rerere.hugeicons.stroke.Link01
 import me.rerere.hugeicons.stroke.LookTop
+import me.rerere.hugeicons.stroke.MagicWand01
 import me.rerere.hugeicons.stroke.McpServer
 import me.rerere.hugeicons.stroke.Megaphone01
 import me.rerere.hugeicons.stroke.Moon02
@@ -255,6 +256,12 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                         leadingContent = { CardGroupIcon(HugeIcons.Image02, containerColor = containerColor, contentColor = contentColor) },
                         supportingContent = { Text(stringResource(R.string.setting_page_media_desc)) },
                         headlineContent = { Text(stringResource(R.string.setting_page_media)) },
+                    )
+                    item(
+                        onClick = { navController.navigate(Screen.SettingImageGeneration) },
+                        leadingContent = { CardGroupIcon(HugeIcons.MagicWand01, containerColor = containerColor, contentColor = contentColor) },
+                        supportingContent = { Text(stringResource(R.string.setting_page_image_generation_desc)) },
+                        headlineContent = { Text(stringResource(R.string.setting_page_image_generation)) },
                     )
                     item(
                         onClick = { navController.navigate(Screen.SettingMcp) },

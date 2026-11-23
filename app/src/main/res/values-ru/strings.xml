@@ -1717,6 +1717,7 @@
   <string name="stats_page_source_translation">Перевод</string>
   <string name="stats_page_source_memory">Память</string>
   <string name="stats_page_source_ocr">OCR</string>
+  <string name="stats_page_source_image_prompt">Промпт изображения</string>
   <string name="assistant_page_memory_empty">Пока нет воспоминаний</string>
   <string name="assistant_page_memory_empty_hint">Ассистент будет запоминать то, что вы ему сообщаете, во время общения. Вы также можете нажать +, чтобы добавить воспоминание</string>
   <string name="assistant_page_memory_empty_disabled_hint">Память для этого ассистента отключена. Включите её, чтобы он запоминал то, что вы ему сообщаете</string>
@@ -2063,4 +2064,25 @@
   <string name="setting_remote_tts_cache_clear">Очистить кэш</string>
   <string name="setting_remote_tts_cache_clear_confirm">Удалить %1$s кэшированного аудио на этом устройстве? Кэш можно создать заново, но при следующем воспроизведении снова будет запрос к серверу.</string>
   <string name="setting_remote_tts_cache_cleared">Очищено записей: %1$d</string>
+
+  <!-- Remote image generation -->
+  <string name="assistant_page_local_tools_image_generation_title">Генерация изображений</string>
+  <string name="assistant_page_local_tools_image_generation_desc">Позволяет ИИ рисовать и редактировать изображения на вашем собственном сервисе</string>
+  <string name="assistant_page_local_tools_image_generation_not_configured">Адрес сервиса изображений не указан, поэтому вызовы этого инструмента будут завершаться ошибкой. Укажите его в разделе «Настройки → Генерация изображений».</string>
+  <string name="setting_page_image_generation">Сервис генерации изображений</string>
+  <string name="setting_page_image_generation_desc">Генерация изображений через собственный сервис ComfyUI</string>
+  <string name="setting_image_generation_base_url">Адрес сервиса</string>
+  <string name="setting_image_generation_base_url_desc">Запросы отправляются на {baseUrl}/api/generate</string>
+  <string name="setting_image_generation_token">Токен доступа</string>
+  <string name="setting_image_generation_token_desc">Нужен, только если сервер запущен с --token</string>
+  <string name="setting_image_generation_prompt_model">Модель для промпта</string>
+  <string name="setting_image_generation_prompt_model_desc">Отдельная модель переписывает запрос в промпт для диффузионной модели перед рендерингом</string>
+  <string name="setting_image_generation_prompt_model_follow_fast">Как в быстрой модели</string>
+  <string name="setting_image_generation_enable_prompt_agent">Использовать отдельный агент промпта</string>
+  <string name="setting_image_generation_enable_prompt_agent_desc">Если выключить, текст модели уйдёт в сервис без изменений</string>
+  <string name="setting_image_generation_steps">Шаги сэмплирования</string>
+  <string name="setting_image_generation_default_size">Размер по умолчанию</string>
+  <string name="setting_image_generation_timeout">Тайм-аут (секунды)</string>
+  <string name="setting_image_generation_timeout_desc">Холодный старт может занять 1–3 минуты</string>
+  <string name="setting_image_generation_not_configured">Укажите адрес сервиса ниже, чтобы начать генерацию</string>
 </resources>

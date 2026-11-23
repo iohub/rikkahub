@@ -1717,6 +1717,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="stats_page_source_translation">翻訳</string>
   <string name="stats_page_source_memory">記憶</string>
   <string name="stats_page_source_ocr">OCR</string>
+  <string name="stats_page_source_image_prompt">画像プロンプト</string>
   <string name="assistant_page_memory_empty">まだ記憶がありません</string>
   <string name="assistant_page_memory_empty_hint">チャット中に伝えた内容をアシスタントが記憶します。+ をタップして追加することもできます</string>
   <string name="assistant_page_memory_empty_disabled_hint">このアシスタントの記憶はオフになっています。オンにすると、伝えた内容を記憶できるようになります</string>
@@ -2063,4 +2064,25 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="setting_remote_tts_cache_clear">キャッシュを削除</string>
   <string name="setting_remote_tts_cache_clear_confirm">この端末の %1$s のキャッシュ音声を削除しますか？キャッシュは再生成できますが、次回の再生時にサーバーへ再リクエストします。</string>
   <string name="setting_remote_tts_cache_cleared">%1$d 件のキャッシュを削除しました</string>
+
+  <!-- Remote image generation -->
+  <string name="assistant_page_local_tools_image_generation_title">画像生成</string>
+  <string name="assistant_page_local_tools_image_generation_desc">AI が自前の画像サービスで画像を描画・編集できるようにします</string>
+  <string name="assistant_page_local_tools_image_generation_not_configured">画像サービスのアドレスが未設定です。有効にすると呼び出しは失敗するため、「設定 → 画像生成サービス」で入力してください。</string>
+  <string name="setting_page_image_generation">画像生成サービス</string>
+  <string name="setting_page_image_generation_desc">自前の ComfyUI サービスで画像を生成します</string>
+  <string name="setting_image_generation_base_url">サービスアドレス</string>
+  <string name="setting_image_generation_base_url_desc">リクエストは {baseUrl}/api/generate に POST されます</string>
+  <string name="setting_image_generation_token">アクセストークン</string>
+  <string name="setting_image_generation_token_desc">サーバーを --token 付きで起動した場合のみ必要です</string>
+  <string name="setting_image_generation_prompt_model">プロンプト用モデル</string>
+  <string name="setting_image_generation_prompt_model_desc">別のモデルがあなたの要望を拡散モデル向けのプロンプトに書き換えてから描画します</string>
+  <string name="setting_image_generation_prompt_model_follow_fast">高速モデルに従う</string>
+  <string name="setting_image_generation_enable_prompt_agent">専用プロンプトエージェントを有効にする</string>
+  <string name="setting_image_generation_enable_prompt_agent_desc">オフにするとモデルの出力をそのまま画像サービスへ送ります</string>
+  <string name="setting_image_generation_steps">サンプリングステップ数</string>
+  <string name="setting_image_generation_default_size">デフォルトサイズ</string>
+  <string name="setting_image_generation_timeout">タイムアウト（秒）</string>
+  <string name="setting_image_generation_timeout_desc">コールドスタートには 1〜3 分かかることがあります</string>
+  <string name="setting_image_generation_not_configured">下のサービスアドレスを設定すると画像を生成できます</string>
 </resources>

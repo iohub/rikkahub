@@ -17,6 +17,7 @@ import me.rerere.rikkahub.BuildConfig
 import me.rerere.rikkahub.data.ai.AIRequestInterceptor
 import me.rerere.rikkahub.data.ai.AgentOrchestrator
 import me.rerere.rikkahub.data.ai.ConversationMetaGenerator
+import me.rerere.rikkahub.data.ai.ImagePromptAgent
 import me.rerere.rikkahub.data.ai.MemoryConsolidationScheduler
 import me.rerere.rikkahub.data.ai.MemoryConsolidator
 import me.rerere.rikkahub.data.ai.RequestLoggingInterceptor
@@ -24,6 +25,9 @@ import me.rerere.rikkahub.data.ai.StageReviewer
 import me.rerere.rikkahub.data.ai.TranslationHandler
 import me.rerere.rikkahub.data.ai.UsageRecorder
 import me.rerere.rikkahub.data.ai.account.ProviderAccountManager
+import me.rerere.rikkahub.data.ai.image.ImageFileSaver
+import me.rerere.rikkahub.data.ai.image.ImageGenerationService
+import me.rerere.rikkahub.data.ai.image.RemoteImageGenerationClient
 import me.rerere.rikkahub.data.ai.mcp.McpManager
 import me.rerere.rikkahub.data.ai.transformers.AssistantTemplateLoader
 import me.rerere.rikkahub.data.ai.transformers.TemplateTransformer
@@ -31,6 +35,7 @@ import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.db.AppDatabase
 import me.rerere.rikkahub.data.db.AppDatabaseFactory
 import me.rerere.rikkahub.data.db.fts.MessageFtsManager
+import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.remote.ModelsDevUpdater
 import me.rerere.rikkahub.data.remote.RemoteFileStore
 import me.rerere.rikkahub.data.remote.RikkaHubAPI
@@ -167,6 +172,31 @@ val dataSourceModule = module {
 
     single {
         ConversationMetaGenerator(context = get(), providerManager = get(), usageRecorder = get())
+    }
+
+    // 自建远程出图：HTTP 客户端 / prompt 改写 agent / 出图编排，三层分开注册，UI 只依赖最外层
+    single {
+        RemoteImageGenerationClient(okHttpClient = get())
+    }
+
+    single {
+        ImagePromptAgent(providerManager = get(), usageRecorder = get())
+    }
+
+    single {
+        val imagePromptAgent: ImagePromptAgent = get()
+        val filesManager: FilesManager = get()
+        ImageGenerationService(
+            client = get(),
+            promptWriter = imagePromptAgent::writePrompt,
+            fileSaver = ImageFileSaver { bytes, displayName, mimeType ->
+                filesManager.createChatFilesByByteArrays(
+                    byteArrays = bytes,
+                    displayName = displayName,
+                    mimeType = mimeType,
+                ).map { it.toString() }
+            },
+        )
     }
 
     // 只保留编排的阶段审查：全局回复质量审查已按产品要求整体移除

@@ -158,6 +158,9 @@ class SettingsStore internal constructor(
         // 媒体生成
         val MEDIA_GENERATION_PROVIDERS = stringPreferencesKey("media_generation_providers")
 
+        // 自建远程出图服务
+        val IMAGE_GENERATION_CONFIG = stringPreferencesKey("image_generation_config")
+
         // TTS
         val TTS_PROVIDERS = stringPreferencesKey("tts_providers")
         val SELECTED_TTS_PROVIDER = stringPreferencesKey("selected_tts_provider")

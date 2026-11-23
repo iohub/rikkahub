@@ -1887,6 +1887,7 @@
   <string name="stats_page_source_translation">Translation</string>
   <string name="stats_page_source_memory">Memory</string>
   <string name="stats_page_source_ocr">OCR</string>
+  <string name="stats_page_source_image_prompt">Image prompt</string>
   <string name="stats_page_source_reviewer">Reviewer</string>
   <string name="image_preview_saving">Saving…</string>
   <string name="image_preview_saved">Image saved</string>
@@ -2227,4 +2228,25 @@
   <string name="setting_remote_tts_cache_clear">Clear cache</string>
   <string name="setting_remote_tts_cache_clear_confirm">Delete %1$s of cached audio on this device? Cached entries can be regenerated, but the next playback will request the server again.</string>
   <string name="setting_remote_tts_cache_cleared">Cleared %1$d cached items</string>
+
+  <!-- Remote image generation -->
+  <string name="assistant_page_local_tools_image_generation_title">Image Generation</string>
+  <string name="assistant_page_local_tools_image_generation_desc">Let the AI draw or edit images on your self-hosted image service</string>
+  <string name="assistant_page_local_tools_image_generation_not_configured">Image service address is not set; calls to this tool will fail. Fill it in under Settings → Image Generation Service.</string>
+  <string name="setting_page_image_generation">Image Generation Service</string>
+  <string name="setting_page_image_generation_desc">Render images through your self-hosted ComfyUI service</string>
+  <string name="setting_image_generation_base_url">Service address</string>
+  <string name="setting_image_generation_base_url_desc">Requests are sent to {baseUrl}/api/generate</string>
+  <string name="setting_image_generation_token">Access token</string>
+  <string name="setting_image_generation_token_desc">Only needed when the service is started with --token</string>
+  <string name="setting_image_generation_prompt_model">Prompt model</string>
+  <string name="setting_image_generation_prompt_model_desc">A separate model rewrites your request into a diffusion prompt before rendering</string>
+  <string name="setting_image_generation_prompt_model_follow_fast">Follow fast model</string>
+  <string name="setting_image_generation_enable_prompt_agent">Enable prompt agent</string>
+  <string name="setting_image_generation_enable_prompt_agent_desc">Turn off to send the model output to the service unchanged</string>
+  <string name="setting_image_generation_steps">Sampling steps</string>
+  <string name="setting_image_generation_default_size">Default size</string>
+  <string name="setting_image_generation_timeout">Timeout (seconds)</string>
+  <string name="setting_image_generation_timeout_desc">Cold starts can take 1–3 minutes</string>
+  <string name="setting_image_generation_not_configured">Set the service address below to start generating images</string>
 </resources>

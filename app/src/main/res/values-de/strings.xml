@@ -1681,6 +1681,7 @@
   <string name="stats_page_source_translation">Übersetzung</string>
   <string name="stats_page_source_memory">Erinnerung</string>
   <string name="stats_page_source_ocr">OCR</string>
+  <string name="stats_page_source_image_prompt">Bild-Prompt</string>
   <string name="image_preview_saving">Wird gespeichert…</string>
   <string name="workspace_ssh_editor_title_edit">SSH-Verbindung bearbeiten</string>
   <string name="workspace_ssh_editor_save">Speichern</string>
@@ -2061,4 +2062,25 @@
   <string name="setting_remote_tts_cache_clear">Cache leeren</string>
   <string name="setting_remote_tts_cache_clear_confirm">%1$s zwischengespeichertes Audio auf diesem Gerät löschen? Der Cache kann neu erzeugt werden, die nächste Wiedergabe fragt aber wieder den Server an.</string>
   <string name="setting_remote_tts_cache_cleared">%1$d Cache-Einträge geleert</string>
+
+  <!-- Remote image generation -->
+  <string name="assistant_page_local_tools_image_generation_title">Bildgenerierung</string>
+  <string name="assistant_page_local_tools_image_generation_desc">Die KI kann auf deinem selbst gehosteten Bilddienst Bilder zeichnen und bearbeiten</string>
+  <string name="assistant_page_local_tools_image_generation_not_configured">Die Adresse des Bilddienstes fehlt, Aufrufe dieses Werkzeugs schlagen daher fehl. Trage sie unter „Einstellungen → Bildgenerierungsdienst“ ein.</string>
+  <string name="setting_page_image_generation">Bildgenerierungsdienst</string>
+  <string name="setting_page_image_generation_desc">Bilder über deinen selbst gehosteten ComfyUI-Dienst erzeugen</string>
+  <string name="setting_image_generation_base_url">Dienstadresse</string>
+  <string name="setting_image_generation_base_url_desc">Anfragen gehen an {baseUrl}/api/generate</string>
+  <string name="setting_image_generation_token">Zugriffstoken</string>
+  <string name="setting_image_generation_token_desc">Nur nötig, wenn der Dienst mit --token gestartet wurde</string>
+  <string name="setting_image_generation_prompt_model">Prompt-Modell</string>
+  <string name="setting_image_generation_prompt_model_desc">Ein separates Modell formuliert deine Anfrage vor dem Rendern in einen Diffusions-Prompt um</string>
+  <string name="setting_image_generation_prompt_model_follow_fast">Schnellem Modell folgen</string>
+  <string name="setting_image_generation_enable_prompt_agent">Eigenen Prompt-Agent verwenden</string>
+  <string name="setting_image_generation_enable_prompt_agent_desc">Deaktiviert geht die Ausgabe des Modells unverändert an den Dienst</string>
+  <string name="setting_image_generation_steps">Sampling-Schritte</string>
+  <string name="setting_image_generation_default_size">Standardgröße</string>
+  <string name="setting_image_generation_timeout">Zeitlimit (Sekunden)</string>
+  <string name="setting_image_generation_timeout_desc">Ein Kaltstart kann 1–3 Minuten dauern</string>
+  <string name="setting_image_generation_not_configured">Trage unten die Dienstadresse ein, um Bilder zu erzeugen</string>
 </resources>

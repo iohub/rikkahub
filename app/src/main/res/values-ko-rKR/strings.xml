@@ -1717,6 +1717,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="stats_page_source_translation">번역</string>
   <string name="stats_page_source_memory">기억</string>
   <string name="stats_page_source_ocr">OCR</string>
+  <string name="stats_page_source_image_prompt">이미지 프롬프트</string>
   <string name="assistant_page_memory_empty">아직 기억이 없습니다</string>
   <string name="assistant_page_memory_empty_hint">채팅하면서 알려 주신 내용을 어시스턴트가 기억합니다. +를 눌러 직접 추가할 수도 있습니다</string>
   <string name="assistant_page_memory_empty_disabled_hint">이 어시스턴트의 기억 기능이 꺼져 있습니다. 켜면 말씀하신 내용을 기억합니다</string>
@@ -2063,4 +2064,25 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="setting_remote_tts_cache_clear">캐시 삭제</string>
   <string name="setting_remote_tts_cache_clear_confirm">이 기기에 있는 %1$s의 캐시 음성을 삭제할까요? 캐시는 다시 생성할 수 있지만, 다음 재생 시 서버에 다시 요청합니다.</string>
   <string name="setting_remote_tts_cache_cleared">캐시 %1$d개를 삭제했습니다</string>
+
+  <!-- Remote image generation -->
+  <string name="assistant_page_local_tools_image_generation_title">이미지 생성</string>
+  <string name="assistant_page_local_tools_image_generation_desc">AI가 직접 구축한 이미지 서비스에서 이미지를 그리고 편집할 수 있게 합니다</string>
+  <string name="assistant_page_local_tools_image_generation_not_configured">이미지 서비스 주소가 설정되지 않았습니다. 이 도구를 켜도 호출이 실패하므로 \'설정 → 이미지 생성 서비스\'에서 입력하세요.</string>
+  <string name="setting_page_image_generation">이미지 생성 서비스</string>
+  <string name="setting_page_image_generation_desc">직접 구축한 ComfyUI 서비스로 이미지를 생성합니다</string>
+  <string name="setting_image_generation_base_url">서비스 주소</string>
+  <string name="setting_image_generation_base_url_desc">요청은 {baseUrl}/api/generate로 POST됩니다</string>
+  <string name="setting_image_generation_token">액세스 토큰</string>
+  <string name="setting_image_generation_token_desc">서버를 --token으로 시작한 경우에만 필요합니다</string>
+  <string name="setting_image_generation_prompt_model">프롬프트 모델</string>
+  <string name="setting_image_generation_prompt_model_desc">별도 모델이 요청을 확산 모델용 프롬프트로 다시 쓴 뒤 렌더링합니다</string>
+  <string name="setting_image_generation_prompt_model_follow_fast">빠른 모델 따르기</string>
+  <string name="setting_image_generation_enable_prompt_agent">별도 프롬프트 에이전트 사용</string>
+  <string name="setting_image_generation_enable_prompt_agent_desc">끄면 모델이 쓴 문장을 그대로 이미지 서비스로 보냅니다</string>
+  <string name="setting_image_generation_steps">샘플링 스텝 수</string>
+  <string name="setting_image_generation_default_size">기본 크기</string>
+  <string name="setting_image_generation_timeout">제한 시간(초)</string>
+  <string name="setting_image_generation_timeout_desc">콜드 스타트에 1~3분이 걸릴 수 있습니다</string>
+  <string name="setting_image_generation_not_configured">아래 서비스 주소를 입력해야 이미지를 생성할 수 있습니다</string>
 </resources>

@@ -1715,6 +1715,7 @@
   <string name="stats_page_source_translation">الترجمة</string>
   <string name="stats_page_source_memory">ذاكرة</string>
   <string name="stats_page_source_ocr">OCR</string>
+  <string name="stats_page_source_image_prompt">موجّه الصورة</string>
   <string name="assistant_page_memory_empty">لا توجد ذكريات بعد</string>
   <string name="assistant_page_memory_empty_hint">سيتذكر المساعد ما تخبره به أثناء الدردشة. يمكنك أيضًا الضغط على + لإضافة ذكرى</string>
   <string name="assistant_page_memory_empty_disabled_hint">الذاكرة معطّلة لهذا المساعد. فعّلها ليتمكن من تذكر ما تخبره به</string>
@@ -2061,4 +2062,25 @@
   <string name="setting_remote_tts_cache_clear">مسح ذاكرة التخزين المؤقت</string>
   <string name="setting_remote_tts_cache_clear_confirm">حذف %1$s من الصوت المخزَّن على هذا الجهاز؟ يمكن إعادة توليد الذاكرة المؤقتة، لكن التشغيل التالي سيطلب من الخادم من جديد.</string>
   <string name="setting_remote_tts_cache_cleared">تم مسح %1$d عنصرًا من الذاكرة المؤقتة</string>
+
+  <!-- Remote image generation -->
+  <string name="assistant_page_local_tools_image_generation_title">توليد الصور</string>
+  <string name="assistant_page_local_tools_image_generation_desc">يتيح للذكاء الاصطناعي رسم الصور وتحريرها على خدمة الصور المستضافة ذاتيًا</string>
+  <string name="assistant_page_local_tools_image_generation_not_configured">لم يتم تعيين عنوان خدمة الصور، لذا ستفشل استدعاءات هذه الأداة. عيّنه من «الإعدادات ← توليد الصور».</string>
+  <string name="setting_page_image_generation">خدمة توليد الصور</string>
+  <string name="setting_page_image_generation_desc">توليد الصور عبر خدمة ComfyUI المستضافة ذاتيًا</string>
+  <string name="setting_image_generation_base_url">عنوان الخدمة</string>
+  <string name="setting_image_generation_base_url_desc">تُرسل الطلبات إلى {baseUrl}/api/generate</string>
+  <string name="setting_image_generation_token">رمز الوصول</string>
+  <string name="setting_image_generation_token_desc">مطلوب فقط عند تشغيل الخدمة بـ --token</string>
+  <string name="setting_image_generation_prompt_model">نموذج الموجّه</string>
+  <string name="setting_image_generation_prompt_model_desc">يعيد نموذج مستقل صياغة طلبك إلى موجّه مناسب لنموذج الانتشار قبل العرض</string>
+  <string name="setting_image_generation_prompt_model_follow_fast">اتّباع النموذج السريع</string>
+  <string name="setting_image_generation_enable_prompt_agent">تفعيل وكيل الموجّه المستقل</string>
+  <string name="setting_image_generation_enable_prompt_agent_desc">عند الإيقاف تُرسل مخرجات النموذج كما هي إلى خدمة الصور</string>
+  <string name="setting_image_generation_steps">خطوات أخذ العينات</string>
+  <string name="setting_image_generation_default_size">الحجم الافتراضي</string>
+  <string name="setting_image_generation_timeout">المهلة (بالثواني)</string>
+  <string name="setting_image_generation_timeout_desc">قد يستغرق التشغيل البارد من 1 إلى 3 دقائق</string>
+  <string name="setting_image_generation_not_configured">عيّن عنوان الخدمة أدناه لبدء توليد الصور</string>
 </resources>

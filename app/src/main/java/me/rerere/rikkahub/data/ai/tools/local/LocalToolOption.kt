@@ -46,4 +46,9 @@ sealed class LocalToolOption {
     @Serializable
     @SerialName("phone_use")
     data object PhoneUse : LocalToolOption()
+
+    /** 用户自建的远程出图服务，见 [me.rerere.rikkahub.data.datastore.ImageGenerationConfig]。 */
+    @Serializable
+    @SerialName("image_generation")
+    data object ImageGeneration : LocalToolOption()
 }
