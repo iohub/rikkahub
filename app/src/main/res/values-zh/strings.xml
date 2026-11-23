@@ -2238,7 +2238,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_page_image_generation">图片生成服务</string>
   <string name="setting_page_image_generation_desc">通过自建的 ComfyUI 服务出图</string>
   <string name="setting_image_generation_base_url">服务地址</string>
-  <string name="setting_image_generation_base_url_desc">请求会 POST 到 {baseUrl}/api/generate</string>
+  <string name="setting_image_generation_base_url_desc">请求会 POST 到 {baseUrl}/api/generate/async（旧版服务端自动回落到 /api/generate）</string>
   <string name="setting_image_generation_token">访问令牌</string>
   <string name="setting_image_generation_token_desc">服务端用 --token 启动时才需要</string>
   <string name="setting_image_generation_prompt_model">出图提示词模型</string>

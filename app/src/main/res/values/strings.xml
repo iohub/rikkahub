@@ -2236,7 +2236,7 @@
   <string name="setting_page_image_generation">Image Generation Service</string>
   <string name="setting_page_image_generation_desc">Render images through your self-hosted ComfyUI service</string>
   <string name="setting_image_generation_base_url">Service address</string>
-  <string name="setting_image_generation_base_url_desc">Requests are sent to {baseUrl}/api/generate</string>
+  <string name="setting_image_generation_base_url_desc">Requests are sent to {baseUrl}/api/generate/async (older servers fall back to /api/generate)</string>
   <string name="setting_image_generation_token">Access token</string>
   <string name="setting_image_generation_token_desc">Only needed when the service is started with --token</string>
   <string name="setting_image_generation_prompt_model">Prompt model</string>
