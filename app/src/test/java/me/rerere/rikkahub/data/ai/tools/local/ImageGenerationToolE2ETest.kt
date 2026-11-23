@@ -129,7 +129,7 @@ class ImageGenerationToolE2ETest {
     }
 
     @Test(timeout = 60_000)
-    fun `unreachable service fails fast without throwing`() = runBlocking {
+    fun `unreachable service fails without throwing`() = runBlocking {
         val saver = TempFileSaver()
         val service = ImageGenerationService(
             client = RemoteImageGenerationClient(
@@ -143,7 +143,8 @@ class ImageGenerationToolE2ETest {
         )
         val tool = buildImageGenerationTool(
             service = service,
-            settingsProvider = { settingsWith("http://127.0.0.1:1") },
+            // 断网后客户端会按退避重试到 timeout 用完，这里压到 2 秒，测试才不会等 20 分钟
+            settingsProvider = { settingsWith("http://127.0.0.1:1", timeoutSeconds = 2) },
             conversationId = null,
         )
 
@@ -158,11 +159,11 @@ class ImageGenerationToolE2ETest {
         assertTrue("连不上不该有图片", saver.files.isEmpty())
     }
 
-    private fun settingsWith(url: String) = Settings(
+    private fun settingsWith(url: String, timeoutSeconds: Int = 600) = Settings(
         imageGenerationConfig = ImageGenerationConfig(
             baseUrl = url,
             // 服务端侧超时 600 秒：冷启动 3~6 分钟 + 出图，比外层 780 秒的看门狗早一点收口
-            timeoutSeconds = 600,
+            timeoutSeconds = timeoutSeconds,
             steps = 4,
             defaultSize = "768x768",
             enablePromptAgent = true,

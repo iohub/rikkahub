@@ -262,8 +262,8 @@ class ImageGenerationServiceTest {
         assertNull(saver.savedBytes)
     }
 
-    @Test(timeout = 30_000)
-    fun `unreachable service returns a failure text instead of throwing`() = runBlocking {
+    @Test(timeout = 60_000)
+    fun `unreachable service retries until its deadline and still hands over the job id`() = runBlocking {
         val client = RemoteImageGenerationClient(
             OkHttpClient.Builder()
                 .connectTimeout(2, TimeUnit.SECONDS)
@@ -271,9 +271,12 @@ class ImageGenerationServiceTest {
                 .build()
         )
         val service = ImageGenerationService(client, FakeWriter(null), FakeSaver(emptyList()))
+        val startedAt = System.currentTimeMillis()
 
         val parts = service.generate(
-            settings = settings(baseUrl = "http://127.0.0.1:1"),
+            // 断网不再「立刻失败」：客户端会按退避重试到服务端 timeout（这里压到 2 秒）用完为止，
+            // 因为提交/轮询的失败可能只是瞬时断网，任务其实还在服务端跑
+            settings = settings(baseUrl = "http://127.0.0.1:1", timeoutSeconds = 2),
             conversationId = null,
             request = ImageGenerationService.Request(prompt = "一只猫"),
         )
@@ -282,6 +285,17 @@ class ImageGenerationServiceTest {
         val body = summaryOf(parts)
         assertEquals(false, body.getValue("ok").jsonPrimitive.boolean)
         assertTrue("必须把连接失败的原因写进 error", body.getValue("error").jsonPrimitive.content.isNotBlank())
+        // 连不上也必须交出 client_job_id：用户可能只是这一瞬间断网，任务其实已经在服务端了
+        assertTrue("job_id 不能为空：$body", body.getValue("job_id").jsonPrimitive.content.isNotBlank())
+        assertTrue(
+            "hint 要告诉模型用 get_image_generation_job 把产物找回来",
+            body.getValue("hint").jsonPrimitive.content.contains("get_image_generation_job"),
+        )
+        assertTrue(
+            "重试应该由整体截止时间收口，而不是第一次连不上就放弃",
+            System.currentTimeMillis() - startedAt >= 1_500,
+        )
+        assertTrue("必须把失败原因留给排查", body.getValue("detail").jsonPrimitive.content.isNotBlank())
     }
 
     // region fakes & helpers

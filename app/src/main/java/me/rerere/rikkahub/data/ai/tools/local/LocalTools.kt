@@ -85,6 +85,13 @@ class LocalTools(
                     conversationId = conversationId,
                 )
             )
+            // 同一个开关带出查询工具：出图断网/中断后，模型要能按 job_id 把产物找回来
+            tools.add(
+                buildImageJobQueryTool(
+                    service = imageGenerationService,
+                    settingsProvider = { settingsStore.settingsFlow.value },
+                )
+            )
         }
         return tools
     }

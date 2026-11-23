@@ -112,6 +112,68 @@ internal fun buildImageGenerationTool(
     },
 )
 
+/**
+ * `get_image_generation_job`：出图失败/中断后按 job_id 把任务找回来的工具。
+ *
+ * 和 `generate_image` 共用同一个 `LocalToolOption.ImageGeneration` 开关：只要用户开了出图能力，
+ * 就该同时拥有「查上一次任务」的能力，否则断网后模型只能重画一遍。
+ */
+internal fun buildImageJobQueryTool(
+    service: ImageGenerationService,
+    settingsProvider: () -> Settings,
+): Tool = Tool(
+    name = "get_image_generation_job",
+    description = """
+        Look up the current state of a job on the user's self-hosted image service and, when the job has already
+        succeeded, return its finished images without regenerating anything.
+        Use it whenever generate_image failed, was interrupted, timed out, or reported a lost connection: pass the
+        job_id from that result (the service accepts both the job_id and the client_job_id) to learn the real
+        progress and to collect the images that were actually produced.
+        Also use it when the user asks how the picture is going or whether an earlier attempt finished.
+        Omit job_id to list the most recent jobs (newest first) and pick the right one from that list.
+    """.trimIndent().replace("\n", " "),
+    parameters = {
+        InputSchema.Obj(
+            properties = buildJsonObject {
+                put("job_id", buildJsonObject {
+                    put("type", "string")
+                    put(
+                        "description",
+                        "The job_id (or client_job_id) reported by generate_image. Omit it to list recent jobs."
+                    )
+                })
+                put("include_images", buildJsonObject {
+                    put("type", "boolean")
+                    put(
+                        "description",
+                        "Download the images when the job already succeeded. Defaults to true; set false to only " +
+                            "read the status."
+                    )
+                })
+            },
+        )
+    },
+    needsApproval = { false },
+    execute = { args ->
+        try {
+            val params = args as? JsonObject
+            if (params == null) {
+                listOf(UIMessagePart.Text(errorJson("参数必须是 JSON 对象")))
+            } else {
+                service.queryJob(
+                    settings = settingsProvider(),
+                    jobId = params.contentOrNull("job_id"),
+                    includeImages = params.booleanOrNull("include_images") ?: true,
+                )
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (t: Throwable) {
+            listOf(UIMessagePart.Text(errorJson(t.message ?: t::class.simpleName ?: "unknown")))
+        }
+    },
+)
+
 /** 解析工具入参；prompt 为空或不是对象时返回 null。 */
 internal fun parseImageGenerationRequest(args: JsonElement): ImageGenerationService.Request? {
     val params = args as? JsonObject ?: return null
